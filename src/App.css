@@ -1,0 +1,17 @@
+/*
+ * Copyright (C) 2025 Garrett Brown
+ * This file is part of meditation.surf - https://github.com/eigendude/meditation.surf
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ * See the file LICENSE.txt for more information.
+ */
+
+.canvasContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100vh;
+  background-color: #000000;
+  overflow: hidden; /* Prevent scrolling */
+}
