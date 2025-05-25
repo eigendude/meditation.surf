@@ -1,0 +1,85 @@
+{
+  "name": "meditation.surf",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Stunning surf cinematography from SwellPatrol",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eigendude/meditation.surf.git"
+  },
+  "homepage": "https://meditation.surf",
+  "bugs": {
+    "url": "https://github.com/eigendude/meditation.surf/issues"
+  },
+  "author": "Garrett Brown <eigendebugger@gmail.com>",
+  "license": "AGPL-3.0-or-later",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "keywords": [
+    "calm",
+    "environment",
+    "health",
+    "meditation",
+    "mindfulness",
+    "nature",
+    "ocean",
+    "peace",
+    "relaxation",
+    "serenity",
+    "spirituality",
+    "surf",
+    "surfing",
+    "tranquility",
+    "water",
+    "waves",
+    "wellness",
+    "zen"
+  ],
+  "scripts": {
+    "audit-ci": "audit-ci --config audit-ci.json",
+    "build": "tsc && vite build",
+    "clean": "rm -rf dist node_modules",
+    "deploy": "pnpm build && gh-pages --branch main --repo git@github.com-eigendude:SwellPatrol/swellpatrol.github.io.git --dist dist --dotfiles",
+    "dev": "vite dev --host",
+    "format": "prettier --write . && eslint --fix .",
+    "lint": "prettier --check . && eslint .",
+    "preview": "vite preview",
+    "start": "vite",
+    "test": "vitest run --passWithNoTests",
+    "test:ui": "vitest --ui"
+  },
+  "dependencies": {
+    "@lightningjs/blits": "^1.29.1",
+    "@lightningjs/sdk": "^5.5.5",
+    "@metrological/sdk": "^1.0.2",
+    "shaka-player": "^4.15.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.27.0",
+    "@types/node": "^22.15.21",
+    "@typescript-eslint/eslint-plugin": "^8.32.1",
+    "@typescript-eslint/parser": "^8.32.1",
+    "audit-ci": "^7.1.0",
+    "eslint": "^9.27.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-prettier": "^5.4.0",
+    "eslint-plugin-simple-import-sort": "^12.1.1",
+    "gh-pages": "^6.3.0",
+    "prettier": "^3.5.3",
+    "prettier-plugin-pkg": "^0.19.1",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.32.1",
+    "vite": "^6.3.5",
+    "vitest": "^3.1.4"
+  },
+  "resolutions": {
+    "got": "14.4.7",
+    "jpeg-js": "0.4.4",
+    "minimist": "1.2.8",
+    "phin": "3.7.1"
+  },
+  "bundleDependencies": false,
+  "target": "web"
+}
