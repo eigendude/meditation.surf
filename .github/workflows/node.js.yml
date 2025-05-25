@@ -1,0 +1,67 @@
+################################################################################
+#
+#  Copyright (C) 2025 Garrett Brown
+#  This file is part of meditation.surf - https://github.com/eigendude/meditation.surf
+#
+#  SPDX-License-Identifier: AGPL-3.0-or-later
+#  See the file LICENSE.txt for more information.
+#
+################################################################################
+
+name: Node.js CI
+
+on: [push, pull_request]
+
+jobs:
+  build-and-deploy:
+    # The type of runner that the job will run on
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            node-version: 24
+
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v4
+
+      - name: Cache pnpm modules
+        id: cache-modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+          key: cache-pnpm-modules-${{ matrix.os }}-${{ matrix.node-version }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install pnpm
+        run: |
+          npm install -g pnpm
+
+      - name: pnpm install
+        if: steps.cache-modules.outputs.cache-hit != 'true'
+        run: |
+          pnpm install
+
+      - name: pnpm audit-ci
+        run: |
+          pnpm audit-ci
+
+      - name: pnpm lint
+        run: |
+          pnpm lint
+
+      - name: pnpm build
+        run: |
+          pnpm build
+
+      - name: pnpm test
+        run: |
+          pnpm test

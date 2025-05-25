@@ -1,0 +1,74 @@
+<!doctype html>
+<html
+  lang="en-US"
+  xml:lang="en-US"
+  xmlns="http://www.w3.org/1999/xhtml"
+  prefix="og: http://ogp.me/ns#"
+  xmlns:og="http://ogp.me/ns#"
+>
+  <head>
+    <title>meditation.surf</title>
+
+    <meta charset="UTF-8" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://meditation.surf/" />
+    <meta property="og:title" content="meditation.surf" />
+    <meta
+      property="og:description"
+      content="Stunning surf cinematography from SwellPatrol"
+    />
+    <meta
+      property="og:image"
+      content="https://meditation.surf/assets/icon.png"
+    />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://meditation.surf/" />
+    <meta property="twitter:title" content="meditation.surf" />
+    <meta
+      property="twitter:description"
+      content="Stunning surf cinematography from SwellPatrol"
+    />
+    <meta
+      property="twitter:image"
+      content="https://meditation.surf/assets/icon.png"
+    />
+
+    <!-- Viewporting -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Link the favicons -->
+    <link rel="icon" type="image/png" href="assets/icon.png" />
+
+    <!-- Add Apple Touch icon (when an iOS device adds the site to their home screen) -->
+    <link rel="apple-touch-icon" sizes="256x256" href="assets/icon.png" />
+
+    <!-- Link the web app manifest for usage as a Progressive Web App (PWA) -->
+    <link
+      rel="manifest"
+      type="application/manifest+json"
+      href="manifest.json"
+    />
+
+    <style>
+      html,
+      body,
+      * {
+        padding: 0;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+
+    <!-- App will attach to this div -->
+    <div id="app"></div>
+
+    <!--Vite entry point -->
+    <script type="module" src="src/index.ts"></script>
+  </body>
+</html>
