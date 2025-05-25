@@ -1,0 +1,16 @@
+{
+  "name": "meditation.surf",
+  "short_name": "meditation.surf",
+  "description": "Stunning surf cinematography from Swell Patrol",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    }
+  ]
+}
