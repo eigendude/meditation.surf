@@ -6,10 +6,7 @@
  * See the file LICENSE.txt for more information.
  */
 
-import { launchLightningApp } from "./LightningApp";
+import { launchApp } from "./app/launchApp";
 
-/**
- * Application entry point. Loads global state and launches the LightningJS
- * view.
- */
-launchLightningApp();
+// Application entry point
+launchApp();
