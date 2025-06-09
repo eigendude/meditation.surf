@@ -26,6 +26,8 @@ Only proceed if all commands succeed.
 - Use plentiful comments to clarify the purpose and functioning of code.
 - Poorly commented code will be rejected during review.
 - Choose descriptive variable names that clearly convey their purpose.
+- Avoid relying on global variables. Use module imports or scoped variables
+  instead.
 - Start new files with the project copyright header (using the current year) whenever possible.
 
   For TypeScript or languages that use block comments:

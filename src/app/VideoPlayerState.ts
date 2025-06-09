@@ -9,7 +9,6 @@
 import { Ads, Lightning, Log, Settings, VideoPlayer } from "@lightningjs/sdk";
 import { initSettings } from "@lightningjs/sdk/src/Settings";
 import { initLightningSdkPlugin } from "@metrological/sdk";
-import Hls from "hls.js";
 
 /**
  * Wrapper holding a reference to the Lightning SDK VideoPlayer.
@@ -21,8 +20,8 @@ class VideoPlayerState {
   /** Global VideoPlayer instance from the Lightning SDK. */
   public readonly videoPlayer: typeof VideoPlayer;
 
-  /** Active hls.js instance or `null` when not using hls.js. */
-  private hls: Hls | null;
+  /** Active Shaka Player instance or `null` when not using Shaka. */
+  private shakaPlayer: any | null;
 
   /** URL of the demo video used for testing playback. */
   private static readonly DEMO_URL: string =
@@ -40,7 +39,7 @@ class VideoPlayerState {
   constructor() {
     // The VideoPlayer plugin sets up its video tag only once.
     this.videoPlayer = VideoPlayer;
-    this.hls = null as Hls | null;
+    this.shakaPlayer = null as any | null;
     this.initialized = false as boolean;
     this.appInstance = null as unknown | null;
     this.opened = false as boolean;
@@ -89,19 +88,6 @@ class VideoPlayerState {
   }
 
   /**
-   * Log whether the video element is present in the DOM. This aids debugging
-   * scenarios where the Lightning SDK fails to create its `<video>` element.
-   */
-  private logVideoElement(): void {
-    const element: HTMLVideoElement | null = document.querySelector("video");
-    if (element === null) {
-      console.debug("Video element not found in DOM");
-    } else {
-      console.debug("Video element present in DOM");
-    }
-  }
-
-  /**
    * Configure the shared VideoPlayer instance if it has not been initialized.
    *
    * @param width - Width of the viewport in pixels.
@@ -140,40 +126,53 @@ class VideoPlayerState {
 
       // Trigger the plugin's setup routine so the `<video>` element is created.
       this.videoPlayer.hide();
-      // Always use hls.js for HLS playback rather than relying on native
-      // browser support. If hls.js is not supported, playback will not start.
+      // Always use Shaka Player for HLS playback rather than relying on native
+      // browser support. If Shaka is not supported, playback will not start.
       this.videoPlayer.loader(
         (url: string, videoEl: HTMLVideoElement): Promise<void> => {
           return new Promise((resolve: () => void): void => {
-            if (!Hls.isSupported()) {
-              console.error("hls.js is not supported in this browser");
-              resolve();
-              return;
-            }
+            void import("shaka-player/dist/shaka-player.compiled.js").then(
+              (module: { default: any }): void => {
+                const shaka: any = module.default;
+                shaka.polyfill.installAll();
+                if (!shaka.Player.isBrowserSupported()) {
+                  console.error(
+                    "Shaka Player is not supported in this browser",
+                  );
+                  resolve();
+                  return;
+                }
 
-            this.hls = new Hls();
-            this.hls.on(Hls.Events.MEDIA_ATTACHED, (): void => {
-              this.hls?.loadSource(url);
-              resolve();
-            });
-            this.hls.attachMedia(videoEl);
+                this.shakaPlayer = new shaka.Player(videoEl);
+                this.shakaPlayer
+                  .load(url)
+                  .then((): void => {
+                    resolve();
+                  })
+                  .catch((error: unknown): void => {
+                    console.error("Failed to load stream with Shaka", error);
+                    resolve();
+                  });
+              },
+            );
           });
         },
       );
 
-      // Tear down hls.js instances to keep resources clean.
+      // Tear down Shaka Player instances to keep resources clean.
       this.videoPlayer.unloader((videoEl: HTMLVideoElement): Promise<void> => {
         return new Promise((resolve: () => void): void => {
-          if (this.hls !== null) {
-            this.hls.destroy();
-            this.hls = null as Hls | null;
+          if (this.shakaPlayer !== null) {
+            this.shakaPlayer.destroy().catch((err: unknown): void => {
+              console.error("Failed to destroy Shaka Player", err);
+            });
+            this.shakaPlayer = null as any | null;
           }
           videoEl.removeAttribute("src");
           videoEl.load();
           resolve();
         });
       });
-      this.logVideoElement();
       console.debug("VideoPlayer plugin initialized");
       this.initialized = true as boolean;
     }
@@ -242,7 +241,6 @@ class VideoPlayerState {
       }
     }
 
-    this.logVideoElement();
     console.debug("VideoPlayer initialization complete");
   }
 }
