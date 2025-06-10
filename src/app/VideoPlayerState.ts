@@ -233,7 +233,11 @@ export class VideoPlayerState {
       ._videoEl;
     if (playerEl !== undefined) {
       playerEl.play().catch((err: unknown): void => {
-        console.warn("Autoplay failed", err);
+        const domException: DOMException | null =
+          err instanceof DOMException ? err : null;
+        if (domException === null || domException.name !== "AbortError") {
+          console.warn("Autoplay failed", err);
+        }
         this.videoPlayer.play();
       });
     } else {
