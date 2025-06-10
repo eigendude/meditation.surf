@@ -64,6 +64,12 @@ const LightningApp: LightningAppFactory = Blits.Application({
       videoPlayerState.initialize(self.stageW as number, self.stageH as number);
       // Play the demo video on page load using the new public API
       videoPlayerState.playUrl(VideoPlayerState.DEMO_URL);
+
+      // Unmute the video player after the first user interaction
+      const unmute: () => void = (): void => {
+        videoPlayerState.unmute();
+      };
+      window.addEventListener("click", unmute, { once: true });
     },
 
     /**

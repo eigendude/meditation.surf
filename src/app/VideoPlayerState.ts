@@ -260,6 +260,20 @@ export class VideoPlayerState {
     this.videoPlayer.loop(true);
     this.opened = true as boolean;
   }
+
+  /**
+   * Unmute the video player so audio can be heard.
+   */
+  public unmute(): void {
+    this.videoPlayer.mute(false);
+
+    const videoElement: HTMLVideoElement | undefined = (this.videoPlayer as any)
+      ._videoEl;
+    if (videoElement !== undefined) {
+      videoElement.muted = false;
+      videoElement.removeAttribute("muted");
+    }
+  }
 }
 
 /** Singleton instance of the video player state. */
