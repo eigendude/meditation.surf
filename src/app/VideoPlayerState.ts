@@ -31,9 +31,6 @@ export class VideoPlayerState {
   /** True after the video player has been configured. */
   private initialized: boolean;
 
-  /** True after the demo video has been opened. */
-  private opened: boolean;
-
   /** URL currently loaded by the video player, if any. */
   private currentUrl: string | null;
 
@@ -46,7 +43,6 @@ export class VideoPlayerState {
     this.shakaPlayer = null as shaka.Player | null;
     this.initialized = false as boolean;
     this.appInstance = null as unknown | null;
-    this.opened = false as boolean;
     this.currentUrl = null as string | null;
   }
 
@@ -237,7 +233,7 @@ export class VideoPlayerState {
    */
   public playUrl(url: string): void {
     // Avoid reloading the same URL to prevent Shaka errors on app reload.
-    if (this.opened && this.currentUrl === url) {
+    if (this.currentUrl === url) {
       this.videoPlayer.play();
       return;
     }
@@ -258,7 +254,6 @@ export class VideoPlayerState {
     }
 
     this.videoPlayer.loop(true);
-    this.opened = true as boolean;
   }
 
   /**
