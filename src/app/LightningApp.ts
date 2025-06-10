@@ -9,7 +9,7 @@
 import Blits from "@lightningjs/blits";
 
 import Icon from "../components/Icon";
-import videoPlayerState, { VideoPlayerState } from "./VideoPlayerState";
+import videoPlayerState from "./VideoPlayerState";
 
 // Type alias for the factory returned by Blits.Application
 type LightningAppFactory = ReturnType<typeof Blits.Application>;
@@ -62,8 +62,6 @@ const LightningApp: LightningAppFactory = Blits.Application({
       videoPlayerState.setAppInstance(self);
       // Initialize the video player once the application instance is ready
       videoPlayerState.initialize(self.stageW as number, self.stageH as number);
-      // Play the demo video on page load using the new public API
-      videoPlayerState.playUrl(VideoPlayerState.DEMO_URL);
     },
 
     /**
