@@ -196,7 +196,9 @@ export class VideoPlayerState {
       videoElement.setAttribute("muted", "");
       videoElement.setAttribute("autoplay", "");
       videoElement.setAttribute("playsinline", "");
+      videoElement.setAttribute("controls", "");
       videoElement.muted = true;
+      videoElement.controls = true;
 
       // Fill the viewport while maintaining aspect ratio
       videoElement.style.objectFit = "cover";
