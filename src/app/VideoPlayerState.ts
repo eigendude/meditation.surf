@@ -9,6 +9,7 @@
 import { Ads, Lightning, Log, Settings, VideoPlayer } from "@lightningjs/sdk";
 import { initSettings } from "@lightningjs/sdk/src/Settings";
 import { initLightningSdkPlugin } from "@metrological/sdk";
+/* global shaka */
 
 /**
  * Wrapper holding a reference to the Lightning SDK VideoPlayer.
@@ -21,7 +22,7 @@ export class VideoPlayerState {
   public readonly videoPlayer: typeof VideoPlayer;
 
   /** Active Shaka Player instance or `null` when not using Shaka. */
-  private shakaPlayer: any | null;
+  private shakaPlayer: shaka.Player | null;
 
   /** URL of the demo video used for testing playback. */
   public static readonly DEMO_URL: string =
@@ -39,7 +40,7 @@ export class VideoPlayerState {
   constructor() {
     // The VideoPlayer plugin sets up its video tag only once.
     this.videoPlayer = VideoPlayer;
-    this.shakaPlayer = null as any | null;
+    this.shakaPlayer = null as shaka.Player | null;
     this.initialized = false as boolean;
     this.appInstance = null as unknown | null;
     this.opened = false as boolean;
@@ -132,10 +133,10 @@ export class VideoPlayerState {
         (url: string, videoEl: HTMLVideoElement): Promise<void> => {
           return new Promise((resolve: () => void): void => {
             void import("shaka-player/dist/shaka-player.compiled.js").then(
-              (module: { default: any }): void => {
-                const shaka: any = module.default;
-                shaka.polyfill.installAll();
-                if (!shaka.Player.isBrowserSupported()) {
+              (module: { default: typeof shaka }): void => {
+                const shakaLib: typeof shaka = module.default;
+                shakaLib.polyfill.installAll();
+                if (!shakaLib.Player.isBrowserSupported()) {
                   console.error(
                     "Shaka Player is not supported in this browser",
                   );
@@ -143,7 +144,7 @@ export class VideoPlayerState {
                   return;
                 }
 
-                this.shakaPlayer = new shaka.Player(videoEl);
+                this.shakaPlayer = new shakaLib.Player(videoEl);
                 this.shakaPlayer
                   .load(url)
                   .then((): void => {
@@ -166,7 +167,7 @@ export class VideoPlayerState {
             this.shakaPlayer.destroy().catch((err: unknown): void => {
               console.error("Failed to destroy Shaka Player", err);
             });
-            this.shakaPlayer = null as any | null;
+            this.shakaPlayer = null as shaka.Player | null;
           }
           videoEl.removeAttribute("src");
           videoEl.load();
