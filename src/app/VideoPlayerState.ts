@@ -207,19 +207,6 @@ export class VideoPlayerState {
     this.videoPlayer.show();
     console.debug("VideoPlayer shown on stage");
 
-    // In texture mode the plugin provides a Lightning component that must be
-    // inserted into the scene graph. Because texture mode is disabled, this
-    // block is kept for reference but does not run.
-    if (this.appInstance !== null && Settings.get("platform", "textureMode")) {
-      const texture: any = (this.appInstance as any).tag("VideoTexture");
-      const container: any = (this.appInstance as any).tag("VideoBackground");
-      if (texture !== undefined && container !== undefined) {
-        container.childList.add(texture);
-        texture.patch({ x: 0, y: 0, w: width, h: height, zIndex: 2 });
-        console.debug("Video texture added to stage");
-      }
-    }
-
     console.debug("VideoPlayer initialization complete");
   }
 
