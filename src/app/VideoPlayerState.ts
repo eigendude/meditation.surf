@@ -16,7 +16,7 @@ import { initLightningSdkPlugin } from "@metrological/sdk";
  * so that app instances can access the same underlying resources
  * even when the application is recreated.
  */
-class VideoPlayerState {
+export class VideoPlayerState {
   /** Global VideoPlayer instance from the Lightning SDK. */
   public readonly videoPlayer: typeof VideoPlayer;
 
@@ -24,7 +24,7 @@ class VideoPlayerState {
   private shakaPlayer: any | null;
 
   /** URL of the demo video used for testing playback. */
-  private static readonly DEMO_URL: string =
+  public static readonly DEMO_URL: string =
     "https://stream.mux.com/7YtWnCpXIt014uMcBK65ZjGfnScdcAneU9TjM9nGAJhk.m3u8";
 
   /** True after the video player has been configured. */
@@ -204,30 +204,6 @@ class VideoPlayerState {
     this.videoPlayer.show();
     console.debug("VideoPlayer shown on stage");
 
-    // Load and play the demo video the first time initialization runs.
-    if (!this.opened) {
-      const url: string = VideoPlayerState.DEMO_URL;
-      this.videoPlayer.mute(true);
-      this.videoPlayer.open(url);
-
-      // Attempt to start playback immediately so the demo video begins
-      // without requiring user interaction. Falling back to the SDK's
-      // play() helper increases compatibility with older browsers.
-      const playerEl: HTMLVideoElement | undefined = (this.videoPlayer as any)
-        ._videoEl;
-      if (playerEl !== undefined) {
-        playerEl.play().catch((err: unknown): void => {
-          console.warn("Autoplay failed", err);
-          this.videoPlayer.play();
-        });
-      } else {
-        this.videoPlayer.play();
-      }
-
-      this.videoPlayer.loop(true);
-      this.opened = true as boolean;
-    }
-
     // In texture mode the plugin provides a Lightning component that must be
     // inserted into the scene graph. Because texture mode is disabled, this
     // block is kept for reference but does not run.
@@ -242,6 +218,33 @@ class VideoPlayerState {
     }
 
     console.debug("VideoPlayer initialization complete");
+  }
+
+  /**
+   * Open a video URL using Shaka Player and begin playback.
+   *
+   * This helper attempts to start playback immediately to satisfy browsers
+   * that require direct user interaction.
+   *
+   * @param url - Media URL to play.
+   */
+  public playUrl(url: string): void {
+    this.videoPlayer.mute(true);
+    this.videoPlayer.open(url);
+
+    const playerEl: HTMLVideoElement | undefined = (this.videoPlayer as any)
+      ._videoEl;
+    if (playerEl !== undefined) {
+      playerEl.play().catch((err: unknown): void => {
+        console.warn("Autoplay failed", err);
+        this.videoPlayer.play();
+      });
+    } else {
+      this.videoPlayer.play();
+    }
+
+    this.videoPlayer.loop(true);
+    this.opened = true as boolean;
   }
 }
 
