@@ -65,11 +65,8 @@ const LightningApp: LightningAppFactory = Blits.Application({
       // Play the demo video on page load using the new public API
       videoPlayerState.playUrl(VideoPlayerState.DEMO_URL);
 
-      // Unmute the video player after the first user interaction
-      const unmute: () => void = (): void => {
-        videoPlayerState.unmute();
-      };
-      window.addEventListener("click", unmute, { once: true });
+      // Restore the saved audio preference once playback has started.
+      videoPlayerState.applySavedMuteAfterPlayback();
     },
 
     /**
