@@ -34,6 +34,9 @@ export class VideoPlayerState {
   /** True after the demo video has been opened. */
   private opened: boolean;
 
+  /** URL currently loaded by the video player, if any. */
+  private currentUrl: string | null;
+
   /** Lightning application instance provided after launch. */
   private appInstance: unknown | null;
 
@@ -44,6 +47,7 @@ export class VideoPlayerState {
     this.initialized = false as boolean;
     this.appInstance = null as unknown | null;
     this.opened = false as boolean;
+    this.currentUrl = null as string | null;
   }
 
   /**
@@ -230,8 +234,15 @@ export class VideoPlayerState {
    * @param url - Media URL to play.
    */
   public playUrl(url: string): void {
+    // Avoid reloading the same URL to prevent Shaka errors on app reload.
+    if (this.opened && this.currentUrl === url) {
+      this.videoPlayer.play();
+      return;
+    }
+
     this.videoPlayer.mute(true);
     this.videoPlayer.open(url);
+    this.currentUrl = url;
 
     const playerEl: HTMLVideoElement | undefined = (this.videoPlayer as any)
       ._videoEl;
