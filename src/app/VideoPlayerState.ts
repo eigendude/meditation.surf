@@ -10,7 +10,6 @@ import { Ads, Lightning, Log, Settings, VideoPlayer } from "@lightningjs/sdk";
 import { initSettings } from "@lightningjs/sdk/src/Settings";
 import { initLightningSdkPlugin } from "@metrological/sdk";
 
-import AudioState from "./AudioState";
 /* global shaka */
 
 /**
@@ -196,13 +195,7 @@ export class VideoPlayerState {
       videoElement.setAttribute("controls", "");
       videoElement.controls = true;
 
-      // Mute audio by default so autoplay works reliably.
-      this.setMuted(true);
-
-      // Persist mute changes to storage for future sessions.
-      videoElement.addEventListener("volumechange", (): void => {
-        AudioState.setMuted(videoElement.muted);
-      });
+      // Allow the video's audio to play without modifying user preferences.
 
       // Fill the viewport while maintaining aspect ratio
       videoElement.style.objectFit = "cover";
@@ -233,7 +226,6 @@ export class VideoPlayerState {
       return;
     }
 
-    this.videoPlayer.mute(true);
     this.videoPlayer.open(url);
     this.currentUrl = url;
 
@@ -253,50 +245,6 @@ export class VideoPlayerState {
     }
 
     this.videoPlayer.loop(true);
-  }
-
-  /**
-   * Restore the persisted mute state once playback begins.
-   */
-  public applySavedMuteAfterPlayback(): void {
-    const videoElement: HTMLVideoElement | undefined = (this.videoPlayer as any)
-      ._videoEl;
-    if (videoElement === undefined) {
-      return;
-    }
-    const restore: () => void = (): void => {
-      const muted: boolean = AudioState.isMuted();
-      this.setMuted(muted);
-      videoElement.removeEventListener("playing", restore);
-    };
-    videoElement.addEventListener("playing", restore, { once: true });
-  }
-
-  /**
-   * Unmute the video player so audio can be heard.
-   */
-  public unmute(): void {
-    this.setMuted(false);
-  }
-
-  /**
-   * Apply the mute state to the underlying video element.
-   *
-   * @param muted - Whether the player should be muted.
-   */
-  public setMuted(muted: boolean): void {
-    this.videoPlayer.mute(muted);
-
-    const videoElement: HTMLVideoElement | undefined = (this.videoPlayer as any)
-      ._videoEl;
-    if (videoElement !== undefined) {
-      videoElement.muted = muted;
-      if (muted) {
-        videoElement.setAttribute("muted", "");
-      } else {
-        videoElement.removeAttribute("muted");
-      }
-    }
   }
 }
 

@@ -64,9 +64,6 @@ const LightningApp: LightningAppFactory = Blits.Application({
       videoPlayerState.initialize(self.stageW as number, self.stageH as number);
       // Play the demo video on page load using the new public API
       videoPlayerState.playUrl(VideoPlayerState.DEMO_URL);
-
-      // Restore the saved audio preference once playback has started.
-      videoPlayerState.applySavedMuteAfterPlayback();
     },
 
     /**
