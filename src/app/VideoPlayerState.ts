@@ -10,6 +10,8 @@ import { Ads, Lightning, Log, Settings, VideoPlayer } from "@lightningjs/sdk";
 import { initSettings } from "@lightningjs/sdk/src/Settings";
 import { initLightningSdkPlugin } from "@metrological/sdk";
 
+import AudioState from "./AudioState";
+
 /* global shaka */
 
 /**
@@ -195,7 +197,14 @@ export class VideoPlayerState {
       videoElement.setAttribute("controls", "");
       videoElement.controls = true;
 
-      // Allow the video's audio to play without modifying user preferences.
+      // Mute by default so autoplay is more likely to succeed.
+      this.setMuted(true);
+
+      // Save audio changes so user preferences persist across sessions.
+      videoElement.addEventListener("volumechange", (): void => {
+        AudioState.setMuted(videoElement.muted);
+        AudioState.setVolume(videoElement.volume);
+      });
 
       // Fill the viewport while maintaining aspect ratio
       videoElement.style.objectFit = "cover";
@@ -226,12 +235,24 @@ export class VideoPlayerState {
       return;
     }
 
+    // Mute before starting playback to maximize autoplay success.
+    this.setMuted(true);
+
     this.videoPlayer.open(url);
     this.currentUrl = url;
 
     const playerEl: HTMLVideoElement | undefined = (this.videoPlayer as any)
       ._videoEl;
     if (playerEl !== undefined) {
+      const restoreAudio: () => void = (): void => {
+        const muted: boolean = AudioState.isMuted();
+        const volume: number = AudioState.getVolume();
+        this.setMuted(muted);
+        this.setVolume(volume);
+        playerEl.removeEventListener("playing", restoreAudio);
+      };
+      playerEl.addEventListener("playing", restoreAudio, { once: true });
+
       playerEl.play().catch((err: unknown): void => {
         const domException: DOMException | null =
           err instanceof DOMException ? err : null;
@@ -245,6 +266,40 @@ export class VideoPlayerState {
     }
 
     this.videoPlayer.loop(true);
+  }
+
+  /**
+   * Apply the mute state to the underlying video element and VideoPlayer.
+   *
+   * @param muted - Whether the player should be muted.
+   */
+  public setMuted(muted: boolean): void {
+    this.videoPlayer.mute(muted);
+
+    const videoElement: HTMLVideoElement | undefined = (this.videoPlayer as any)
+      ._videoEl;
+    if (videoElement !== undefined) {
+      videoElement.muted = muted;
+      if (muted) {
+        videoElement.setAttribute("muted", "");
+      } else {
+        videoElement.removeAttribute("muted");
+      }
+    }
+  }
+
+  /**
+   * Set the playback volume on the underlying video element.
+   *
+   * @param volume - Volume value in [0, 1].
+   */
+  public setVolume(volume: number): void {
+    const videoElement: HTMLVideoElement | undefined = (this.videoPlayer as any)
+      ._videoEl;
+    if (videoElement !== undefined) {
+      const clamped: number = Math.min(Math.max(volume, 0), 1);
+      videoElement.volume = clamped;
+    }
   }
 }
 
