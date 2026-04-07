@@ -8,9 +8,9 @@
 
 import Blits from "@lightningjs/blits";
 
-import { debounce } from "../utils/debounce";
-import LightningApp from "./LightningApp";
-import videoPlayerState from "./VideoPlayerState";
+import { debounce } from "../../utils/debounce";
+import videoPlayerState from "../state/VideoPlayerState";
+import LightningApp from "../ui/LightningApp";
 
 /**
  * Milliseconds to wait before applying the final size after a resize

@@ -8,8 +8,8 @@
 
 import Blits from "@lightningjs/blits";
 
-import AudioState from "../app/AudioState";
-import videoPlayerState from "../app/VideoPlayerState";
+import AudioState from "../../app/state/AudioState";
+import videoPlayerState from "../../app/state/VideoPlayerState";
 
 // Type alias for the factory returned by Blits.Component
 type AudioToggleFactory = ReturnType<typeof Blits.Component>;
