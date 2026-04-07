@@ -10,83 +10,73 @@ import Blits from "@lightningjs/blits";
 
 import videoPlayerState from "../state/VideoPlayerState";
 import LightningApp from "../ui/LightningApp";
+import { LIGHTNING_APP_HEIGHT, LIGHTNING_APP_WIDTH } from "../ui/LightningApp";
 
-/**
- * Minimal renderer contract needed to resize the stage in place.
- */
-type ResizableRenderer = {
-  setOptions: (...errArgs: [{ appWidth: number; appHeight: number }]) => void;
+type FittedStageBounds = {
+  scale: number;
+  width: number;
+  height: number;
+  left: number;
+  top: number;
+};
+
+const getInitialFittedStageBounds = (): FittedStageBounds => {
+  const viewportWidth: number = window.innerWidth;
+  const viewportHeight: number = window.innerHeight;
+  const widthScale: number = viewportWidth / LIGHTNING_APP_WIDTH;
+  const heightScale: number = viewportHeight / LIGHTNING_APP_HEIGHT;
+  const scale: number = Math.min(widthScale, heightScale);
+  const width: number = LIGHTNING_APP_WIDTH * scale;
+  const height: number = LIGHTNING_APP_HEIGHT * scale;
+  const left: number = (viewportWidth - width) / 2;
+  const top: number = (viewportHeight - height) / 2;
+
+  return {
+    scale,
+    width,
+    height,
+    left,
+    top,
+  };
 };
 
 /**
- * Resolve the active Blits renderer from the current app instance.
+ * Launch the app once at a fixed TV resolution and position its canvas.
  */
-function getRenderer(): ResizableRenderer | null {
-  const appInstance: object | null = videoPlayerState.getAppInstance() as
-    | object
-    | null;
-  if (appInstance === null) {
-    return null;
-  }
-
-  const symbols: symbol[] = Object.getOwnPropertySymbols(appInstance);
-  for (const symbolKey of symbols) {
-    const propertyValue: unknown = (
-      appInstance as Record<PropertyKey, unknown>
-    )[symbolKey];
-    if (typeof propertyValue !== "function") {
-      continue;
-    }
-
-    const candidateRenderer: unknown = propertyValue();
-    if (
-      candidateRenderer !== null &&
-      typeof candidateRenderer === "object" &&
-      "setOptions" in candidateRenderer
-    ) {
-      return candidateRenderer as ResizableRenderer;
-    }
-  }
-
-  return null;
-}
-
-/**
- * Launch the app once and position its canvas.
- */
-function startApp(width: number, height: number): void {
+function startApp(): void {
   const mount: HTMLElement = document.getElementById("app") as HTMLElement;
-  Blits.Launch(LightningApp, "app", { w: width, h: height });
+  const fittedStageBounds: FittedStageBounds = getInitialFittedStageBounds();
+
+  mount.style.position = "relative";
+  Blits.Launch(LightningApp, "app", {
+    w: LIGHTNING_APP_WIDTH,
+    h: LIGHTNING_APP_HEIGHT,
+  });
 
   const positionCanvas = (): void => {
     const canvas: HTMLCanvasElement | null = mount.querySelector("canvas");
     if (canvas !== null) {
       canvas.style.position = "absolute";
-      canvas.style.top = "0";
-      canvas.style.left = "0";
-      canvas.style.width = "100%";
-      canvas.style.height = "100%";
+      canvas.style.top = `${fittedStageBounds.top}px`;
+      canvas.style.left = `${fittedStageBounds.left}px`;
+      canvas.style.width = `${fittedStageBounds.width}px`;
+      canvas.style.height = `${fittedStageBounds.height}px`;
       canvas.style.zIndex = "1";
     }
+
+    videoPlayerState.setDisplayBounds(
+      fittedStageBounds.left,
+      fittedStageBounds.top,
+      fittedStageBounds.width,
+      fittedStageBounds.height,
+    );
   };
   window.setTimeout(positionCanvas, 0);
 }
 
 /**
- * Resize the existing renderer without rebuilding the app.
- */
-function resizeApp(width: number, height: number): void {
-  const activeRenderer: ResizableRenderer | null = getRenderer();
-  activeRenderer?.setOptions({ appWidth: width, appHeight: height });
-}
-
-/**
- * Start the app once and keep its renderer sized to the viewport.
+ * Start the app once using the fixed TV layout.
  */
 export function launchApp(): void {
-  window.addEventListener("resize", (): void => {
-    resizeApp(window.innerWidth, window.innerHeight);
-  });
-
-  startApp(window.innerWidth, window.innerHeight);
+  startApp();
 }

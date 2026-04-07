@@ -17,6 +17,12 @@ type ShakaPlayer = InstanceType<ShakaModule["Player"]>;
 type SettingsCategory = "app" | "platform" | "user";
 type SettingsValue = Record<string, unknown>;
 type SettingsSubscriber = (err: unknown) => void;
+type DisplayBounds = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
 
 /**
  * Populate the public Lightning Settings API without importing the SDK's
@@ -137,6 +143,9 @@ export class VideoPlayerState {
   /** Lightning application instance provided after launch. */
   private appInstance: unknown | null;
 
+  /** Boot-time DOM bounds for the displayed stage. */
+  private displayBounds: DisplayBounds | null;
+
   constructor() {
     // The VideoPlayer plugin sets up its video tag only once.
     this.videoPlayer = VideoPlayer;
@@ -144,6 +153,7 @@ export class VideoPlayerState {
     this.initialized = false as boolean;
     this.appInstance = null as unknown | null;
     this.currentUrl = null as string | null;
+    this.displayBounds = null as DisplayBounds | null;
   }
 
   /**
@@ -186,6 +196,42 @@ export class VideoPlayerState {
   public clearAppInstance(): void {
     this.appInstance = null as unknown | null;
     initLightningSdkPlugin.appInstance = undefined as unknown as undefined;
+  }
+
+  public setDisplayBounds(
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+  ): void {
+    this.displayBounds = {
+      left,
+      top,
+      width,
+      height,
+    };
+    this.applyDisplayBounds();
+  }
+
+  private applyDisplayBounds(): void {
+    if (this.displayBounds === null) {
+      return;
+    }
+
+    this.videoPlayer.position(this.displayBounds.left, this.displayBounds.top);
+    this.videoPlayer.size(this.displayBounds.width, this.displayBounds.height);
+
+    const videoElement: HTMLVideoElement | undefined = (this.videoPlayer as any)
+      ._videoEl;
+    if (videoElement === undefined) {
+      return;
+    }
+
+    videoElement.style.position = "absolute";
+    videoElement.style.left = `${this.displayBounds.left}px`;
+    videoElement.style.top = `${this.displayBounds.top}px`;
+    videoElement.style.width = `${this.displayBounds.width}px`;
+    videoElement.style.height = `${this.displayBounds.height}px`;
   }
 
   /**
@@ -307,23 +353,10 @@ export class VideoPlayerState {
       videoElement.style.zIndex = "0";
     }
 
-    // Ensure the video covers the viewport
-    this.resize(width, height);
+    this.applyDisplayBounds();
+    this.videoPlayer.show();
 
     console.debug("VideoPlayer initialization complete");
-  }
-
-  /**
-   * Update the video bounds to match the current viewport.
-   *
-   * @param width - Width of the viewport in pixels.
-   * @param height - Height of the viewport in pixels.
-   */
-  public resize(width: number, height: number): void {
-    this.videoPlayer.position(0, 0);
-    this.videoPlayer.size(width, height);
-    this.videoPlayer.show();
-    console.debug("VideoPlayer shown on stage");
   }
 
   /**

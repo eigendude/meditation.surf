@@ -14,14 +14,17 @@ import videoPlayerState, { VideoPlayerState } from "../state/VideoPlayerState";
 
 // Type alias for the factory returned by Blits.Application
 type LightningAppFactory = ReturnType<typeof Blits.Application>;
+// Fixed design resolution for the TV-only Lightning experience.
+export const LIGHTNING_APP_WIDTH: number = 1920;
+export const LIGHTNING_APP_HEIGHT: number = 1080;
 
 // Minimal LightningJS app displaying a full-screen icon
 const LightningApp: LightningAppFactory = Blits.Application({
-  // Track viewport dimensions for the root stage
+  // Keep the stage dimensions fixed for the TV-only experience.
   state(): { stageW: number; stageH: number } {
     return {
-      stageW: window.innerWidth as number, // viewport width
-      stageH: window.innerHeight as number, // viewport height
+      stageW: LIGHTNING_APP_WIDTH,
+      stageH: LIGHTNING_APP_HEIGHT,
     };
   },
 
@@ -43,27 +46,13 @@ const LightningApp: LightningAppFactory = Blits.Application({
      */
     ready(): void {
       const self: any = this;
-      const listener: () => void = (): void => {
-        self.stageW = window.innerWidth;
-        self.stageH = window.innerHeight;
-        videoPlayerState.resize(self.stageW as number, self.stageH as number);
-      };
-
-      self.resizeListener = listener;
-      window.addEventListener("resize", listener);
       videoPlayerState.setAppInstance(self);
-      videoPlayerState.initialize(self.stageW as number, self.stageH as number);
+      videoPlayerState.initialize(LIGHTNING_APP_WIDTH, LIGHTNING_APP_HEIGHT);
       videoPlayerState.playUrl(VideoPlayerState.DEMO_URL);
     },
 
-    /**
-     * Clean up the resize listener when the component is destroyed.
-     */
+    /** Clear the app instance reference when the component is destroyed. */
     destroy(): void {
-      const self: any = this;
-      if (self.resizeListener) {
-        window.removeEventListener("resize", self.resizeListener as () => void);
-      }
       videoPlayerState.clearAppInstance();
     },
   },
