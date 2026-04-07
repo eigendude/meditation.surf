@@ -24,10 +24,6 @@ type DisplayBounds = {
  * Lightning renders only the UI while app code owns media playback.
  */
 export class VideoPlayerState {
-  /** URL of the demo video used for testing playback. */
-  public static readonly DEMO_URL: string =
-    "https://stream.mux.com/7YtWnCpXIt014uMcBK65ZjGfnScdcAneU9TjM9nGAJhk.m3u8";
-
   /** Shared DOM video element created once at boot. */
   private videoElement: HTMLVideoElement | null;
 

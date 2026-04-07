@@ -10,11 +10,16 @@ import Blits from "@lightningjs/blits";
 
 import AudioToggle from "../../components/audio/AudioToggle";
 import Icon from "../../components/common/Icon";
-import videoPlayerState, { VideoPlayerState } from "../state/VideoPlayerState";
+import videoPlayerState from "../state/VideoPlayerState";
+
+/** URL of the demo video used for testing playback. */
+export const DEMO_URL: string =
+  "https://stream.mux.com/7YtWnCpXIt014uMcBK65ZjGfnScdcAneU9TjM9nGAJhk.m3u8";
 
 // Type alias for the factory returned by Blits.Application
 type LightningAppFactory = ReturnType<typeof Blits.Application>;
-// Fixed design resolution for the TV-only Lightning experience.
+
+// Fixed design resolution for the TV-only Lightning experience
 export const LIGHTNING_APP_WIDTH: number = 1920;
 export const LIGHTNING_APP_HEIGHT: number = 1080;
 
@@ -45,7 +50,7 @@ const LightningApp: LightningAppFactory = Blits.Application({
      */
     ready(): void {
       videoPlayerState.initialize(LIGHTNING_APP_WIDTH, LIGHTNING_APP_HEIGHT);
-      videoPlayerState.playUrl(VideoPlayerState.DEMO_URL);
+      videoPlayerState.playUrl(DEMO_URL);
     },
   },
 
