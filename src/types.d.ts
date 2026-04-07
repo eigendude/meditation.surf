@@ -7,11 +7,9 @@
  */
 
 /**
- * Ambient declarations for Lightning SDK internals. The VideoPlayer plugin
- * depends on these modules, but they ship without TypeScript types. Declaring
- * them here allows the project to compile while using the JavaScript APIs.
+ * Ambient declarations for JavaScript-only dependencies that do not ship
+ * TypeScript module metadata.
  */
-declare module "@lightningjs/sdk/src/Settings";
 declare module "@metrological/sdk";
 // Shaka Player does not ship TypeScript module declarations.
 // Provide a minimal module definition so it can be imported with types.

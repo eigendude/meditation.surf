@@ -6,9 +6,19 @@
  * See the file LICENSE.txt for more information.
  */
 
-import blitsVitePlugins from "@lightningjs/blits/vite";
+import {
+  blitsFileConverter,
+  injectDevConfig,
+  preCompiler,
+  reactivityGuard,
+} from "@lightningjs/blits/vite";
+import { createRequire } from "node:module";
 import { defineConfig } from "vite";
-import { resolve } from "path";
+
+const require = createRequire(import.meta.url);
+const lightningSettingsEntry =
+  require.resolve("@lightningjs/sdk/src/Settings/index.js");
+const metrologicalSdkEntry = require.resolve("@metrological/sdk/index.js");
 
 // Vite configuration for the LightningJS-based application. The configuration
 // is intentionally simple and primarily enables the Blits plugin along with the
@@ -19,8 +29,14 @@ export default defineConfig({
   // site is deployed under a subdirectory.
   base: "/",
 
-  // Use the Blits plugin to add LightningJS support during build and dev
-  plugins: [...blitsVitePlugins],
+  // Use the Blits Vite plugins needed by this app. The default plugin bundle
+  // also includes MSDF font generation, which this project does not use.
+  plugins: [
+    injectDevConfig(),
+    blitsFileConverter(),
+    reactivityGuard(),
+    preCompiler(),
+  ],
 
   server: {
     headers: {
@@ -36,12 +52,8 @@ export default defineConfig({
   // Ensure internal Lightning modules can be bundled by the dev server
   resolve: {
     alias: {
-      "@lightningjs/sdk/src/Settings": resolve(
-        "./node_modules/.pnpm/@lightningjs+sdk@5.5.5/node_modules/@lightningjs/sdk/src/Settings/index.js",
-      ),
-      "@metrological/sdk": resolve(
-        "./node_modules/.pnpm/@metrological+sdk@1.0.2/node_modules/@metrological/sdk/index.js",
-      ),
+      "@lightningjs/sdk/src/Settings": lightningSettingsEntry,
+      "@metrological/sdk": metrologicalSdkEntry,
     },
   },
 

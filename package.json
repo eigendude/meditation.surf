@@ -51,34 +51,32 @@
     "test:ui": "vitest --ui"
   },
   "dependencies": {
-    "@lightningjs/blits": "^1.29.1",
-    "@lightningjs/sdk": "^5.5.5",
+    "@lightningjs/blits": "^2.0.1",
+    "@lightningjs/sdk": "^5.5.7",
     "@metrological/sdk": "^1.0.2",
-    "shaka-player": "^4.15.2"
+    "shaka-player": "^5.0.9"
   },
   "devDependencies": {
-    "@eslint/js": "^9.27.0",
-    "@types/node": "^22.15.21",
-    "@typescript-eslint/eslint-plugin": "^8.32.1",
-    "@typescript-eslint/parser": "^8.32.1",
+    "@eslint/js": "^10.0.1",
+    "@lightningjs/msdf-generator": "^1.2.0",
+    "@types/node": "^25.5.2",
+    "@typescript-eslint/eslint-plugin": "^8.58.0",
+    "@typescript-eslint/parser": "^8.58.0",
     "audit-ci": "^7.1.0",
-    "eslint": "^9.27.0",
-    "eslint-config-prettier": "^10.1.5",
-    "eslint-plugin-prettier": "^5.4.0",
-    "eslint-plugin-simple-import-sort": "^12.1.1",
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-simple-import-sort": "^13.0.0",
     "gh-pages": "^6.3.0",
-    "prettier": "^3.5.3",
-    "prettier-plugin-pkg": "^0.19.1",
-    "typescript": "^5.8.3",
-    "typescript-eslint": "^8.32.1",
-    "vite": "^6.3.5",
-    "vitest": "^3.1.4"
+    "prettier": "^3.8.1",
+    "prettier-plugin-pkg": "^0.22.1",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.58.0",
+    "vite": "^8.0.6",
+    "vitest": "^4.1.3"
   },
   "resolutions": {
-    "got": "14.4.7",
-    "jpeg-js": "0.4.4",
-    "minimist": "1.2.8",
-    "phin": "3.7.1"
+    "file-type": "22.0.0"
   },
   "bundleDependencies": false,
   "target": "web"

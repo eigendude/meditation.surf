@@ -7,12 +7,109 @@
  */
 
 import { Ads, Lightning, Log, Settings, VideoPlayer } from "@lightningjs/sdk";
-import { initSettings } from "@lightningjs/sdk/src/Settings";
 import { initLightningSdkPlugin } from "@metrological/sdk";
+import type shaka from "shaka-player/dist/shaka-player.compiled.js";
 
 import AudioState from "./AudioState";
 
-/* global shaka */
+type ShakaModule = typeof shaka;
+type ShakaPlayer = InstanceType<ShakaModule["Player"]>;
+type SettingsCategory = "app" | "platform" | "user";
+type SettingsValue = Record<string, unknown>;
+type SettingsSubscriber = (err: unknown) => void;
+
+/**
+ * Populate the public Lightning Settings API without importing the SDK's
+ * internal `src/Settings` module path, which is no longer a stable bundling
+ * target under Vite.
+ */
+const initializeLightningSettings = (
+  appSettings: SettingsValue,
+  platformSettings: SettingsValue,
+): void => {
+  const settingsStore: Record<SettingsCategory, SettingsValue> = {
+    app: appSettings,
+    platform: platformSettings,
+    user: {},
+  };
+  const subscribers: Record<string, SettingsSubscriber[]> = {};
+
+  const getValueFromPath = (
+    sourceObject: unknown,
+    keyPath: string,
+  ): unknown => {
+    if (sourceObject === null || sourceObject === undefined) {
+      return undefined;
+    }
+
+    let currentValue: unknown = sourceObject;
+    const pathSegments: string[] = keyPath.split(".");
+
+    for (const pathSegment of pathSegments) {
+      if (
+        currentValue === null ||
+        currentValue === undefined ||
+        typeof currentValue !== "object"
+      ) {
+        return undefined;
+      }
+
+      currentValue = (currentValue as Record<string, unknown>)[pathSegment];
+    }
+
+    if (
+      currentValue !== null &&
+      typeof currentValue === "object" &&
+      Object.keys(currentValue as Record<string, unknown>).length === 0
+    ) {
+      return undefined;
+    }
+
+    return currentValue;
+  };
+
+  Settings.get = (
+    type: SettingsCategory,
+    key: string,
+    fallback?: unknown,
+  ): unknown => {
+    const value: unknown = getValueFromPath(settingsStore[type], key);
+    return value !== undefined ? value : fallback;
+  };
+
+  Settings.has = (type: SettingsCategory, key: string): boolean => {
+    return Settings.get(type, key) !== undefined;
+  };
+
+  Settings.set = (key: string, value: unknown): void => {
+    settingsStore.user[key] = value;
+    for (const subscriber of subscribers[key] ?? []) {
+      subscriber(value);
+    }
+  };
+
+  Settings.subscribe = (key: string, callback: SettingsSubscriber): void => {
+    subscribers[key] ??= [];
+    subscribers[key].push(callback);
+  };
+
+  Settings.unsubscribe = (key: string, callback?: SettingsSubscriber): void => {
+    if (callback === undefined) {
+      subscribers[key] = [];
+      return;
+    }
+
+    subscribers[key] = (subscribers[key] ?? []).filter(
+      (subscriber: SettingsSubscriber): boolean => subscriber !== callback,
+    );
+  };
+
+  Settings.clearSubscribers = (): void => {
+    for (const key of Object.keys(subscribers)) {
+      delete subscribers[key];
+    }
+  };
+};
 
 /**
  * Wrapper holding a reference to the Lightning SDK VideoPlayer.
@@ -25,7 +122,7 @@ export class VideoPlayerState {
   public readonly videoPlayer: typeof VideoPlayer;
 
   /** Active Shaka Player instance or `null` when not using Shaka. */
-  private shakaPlayer: shaka.Player | null;
+  private shakaPlayer: ShakaPlayer | null;
 
   /** URL of the demo video used for testing playback. */
   public static readonly DEMO_URL: string =
@@ -43,7 +140,7 @@ export class VideoPlayerState {
   constructor() {
     // The VideoPlayer plugin sets up its video tag only once.
     this.videoPlayer = VideoPlayer;
-    this.shakaPlayer = null as shaka.Player | null;
+    this.shakaPlayer = null;
     this.initialized = false as boolean;
     this.appInstance = null as unknown | null;
     this.currentUrl = null as string | null;
@@ -114,7 +211,7 @@ export class VideoPlayerState {
       // The plugin needs Settings, Logging, and the Lightning instance.
       // Disable texture mode because Blits does not expose the old Lightning
       // Application APIs required by the VideoTexture integration.
-      initSettings({}, { width, height, textureMode: false });
+      initializeLightningSettings({}, { width, height, textureMode: false });
       initLightningSdkPlugin.log = Log;
       initLightningSdkPlugin.settings = Settings;
       initLightningSdkPlugin.ads = Ads;
@@ -136,8 +233,8 @@ export class VideoPlayerState {
         (url: string, videoEl: HTMLVideoElement): Promise<void> => {
           return new Promise((resolve: () => void): void => {
             void import("shaka-player/dist/shaka-player.compiled.js").then(
-              (module: { default: typeof shaka }): void => {
-                const shakaLib: typeof shaka = module.default;
+              (module): void => {
+                const shakaLib: ShakaModule = module.default;
                 shakaLib.polyfill.installAll();
                 if (!shakaLib.Player.isBrowserSupported()) {
                   console.error(
@@ -170,7 +267,7 @@ export class VideoPlayerState {
             this.shakaPlayer.destroy().catch((err: unknown): void => {
               console.error("Failed to destroy Shaka Player", err);
             });
-            this.shakaPlayer = null as shaka.Player | null;
+            this.shakaPlayer = null;
           }
           videoEl.removeAttribute("src");
           videoEl.load();
