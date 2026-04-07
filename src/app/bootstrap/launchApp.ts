@@ -8,62 +8,55 @@
 
 import Blits from "@lightningjs/blits";
 
-import { debounce } from "../../utils/debounce";
 import videoPlayerState from "../state/VideoPlayerState";
 import LightningApp from "../ui/LightningApp";
 
 /**
- * Milliseconds to wait before applying the final size after a resize
+ * Minimal renderer contract needed to resize the stage in place.
  */
-const COOL_DOWN_MS: number = 100;
+type ResizableRenderer = {
+  setOptions: (...errArgs: [{ appWidth: number; appHeight: number }]) => void;
+};
 
 /**
- * Launch the LightningJS application sized to the current viewport
+ * Resolve the active Blits renderer from the current app instance.
  */
-function launchLightningApp(width: number, height: number): void {
-  Blits.Launch(LightningApp, "app", {
-    w: width,
-    h: height,
-  });
-}
+function getRenderer(): ResizableRenderer | null {
+  const appInstance: object | null = videoPlayerState.getAppInstance() as
+    | object
+    | null;
+  if (appInstance === null) {
+    return null;
+  }
 
-/**
- * Launch the app, replacing any existing canvas
- */
-function startApp(width: number, height: number): void {
-  const mount: HTMLElement = document.getElementById("app") as HTMLElement;
-  const oldCanvas: HTMLCanvasElement | null = mount.querySelector("canvas");
-  const previousApp: unknown | null = videoPlayerState.getAppInstance();
-
-  // Clean up the old Lightning application to free its WebGL context before
-  // launching a new one. This avoids accumulating WebGL contexts if the
-  // destruction fails due to race conditions in the underlying Blits APIs.
-  if (previousApp !== null) {
-    const instance: any = previousApp as any;
-    try {
-      if (typeof instance.quit === "function") {
-        // Prefer `quit()` because it handles renderer shutdown internally.
-        instance.quit();
-      } else if (typeof instance.destroy === "function") {
-        // Fall back to the lower level destroy if no quit method exists.
-        instance.destroy();
-      }
-    } catch (error: unknown) {
-      console.warn("Failed to destroy previous Lightning app", error);
-    } finally {
-      // Remove reference so we do not attempt to destroy again.
-      videoPlayerState.clearAppInstance();
+  const symbols: symbol[] = Object.getOwnPropertySymbols(appInstance);
+  for (const symbolKey of symbols) {
+    const propertyValue: unknown = (
+      appInstance as Record<PropertyKey, unknown>
+    )[symbolKey];
+    if (typeof propertyValue !== "function") {
+      continue;
     }
 
-    if (oldCanvas !== null) {
-      oldCanvas.remove();
+    const candidateRenderer: unknown = propertyValue();
+    if (
+      candidateRenderer !== null &&
+      typeof candidateRenderer === "object" &&
+      "setOptions" in candidateRenderer
+    ) {
+      return candidateRenderer as ResizableRenderer;
     }
   }
 
-  // Launch the new LightningJS canvas after the previous instance has been
-  // destroyed. This prevents WebGL context leakage and the associated console
-  // warnings.
-  launchLightningApp(width, height);
+  return null;
+}
+
+/**
+ * Launch the app once and position its canvas.
+ */
+function startApp(width: number, height: number): void {
+  const mount: HTMLElement = document.getElementById("app") as HTMLElement;
+  Blits.Launch(LightningApp, "app", { w: width, h: height });
 
   const positionCanvas = (): void => {
     const canvas: HTMLCanvasElement | null = mount.querySelector("canvas");
@@ -80,14 +73,19 @@ function startApp(width: number, height: number): void {
 }
 
 /**
- * Start the app and watch for window size changes
+ * Resize the existing renderer without rebuilding the app.
+ */
+function resizeApp(width: number, height: number): void {
+  const activeRenderer: ResizableRenderer | null = getRenderer();
+  activeRenderer?.setOptions({ appWidth: width, appHeight: height });
+}
+
+/**
+ * Start the app once and keep its renderer sized to the viewport.
  */
 export function launchApp(): void {
-  const debouncedStartApp: (...errArgs: Parameters<typeof startApp>) => void =
-    debounce(startApp, COOL_DOWN_MS);
-
   window.addEventListener("resize", (): void => {
-    debouncedStartApp(window.innerWidth, window.innerHeight);
+    resizeApp(window.innerWidth, window.innerHeight);
   });
 
   startApp(window.innerWidth, window.innerHeight);

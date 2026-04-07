@@ -308,13 +308,22 @@ export class VideoPlayerState {
     }
 
     // Ensure the video covers the viewport
-    this.videoPlayer.position(0, 0);
-    this.videoPlayer.size(width, height);
-
-    this.videoPlayer.show();
-    console.debug("VideoPlayer shown on stage");
+    this.resize(width, height);
 
     console.debug("VideoPlayer initialization complete");
+  }
+
+  /**
+   * Update the video bounds to match the current viewport.
+   *
+   * @param width - Width of the viewport in pixels.
+   * @param height - Height of the viewport in pixels.
+   */
+  public resize(width: number, height: number): void {
+    this.videoPlayer.position(0, 0);
+    this.videoPlayer.size(width, height);
+    this.videoPlayer.show();
+    console.debug("VideoPlayer shown on stage");
   }
 
   /**

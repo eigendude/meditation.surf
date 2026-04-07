@@ -37,26 +37,20 @@ const LightningApp: LightningAppFactory = Blits.Application({
 
   hooks: {
     /**
-     * Setup the window resize handler so the app continues to
-     * cover the viewport when the browser size changes.
-     */
-    init(): void {
-      const self: any = this;
-      const listener: () => void = (): void => {
-        self.stageW = window.innerWidth;
-        self.stageH = window.innerHeight;
-      };
-      self.resizeListener = listener;
-      window.addEventListener("resize", listener);
-    },
-
-    /**
      * The application is fully rendered and ready. Configure the video
      * player only after the stage is available so the plugin can find
      * the VideoTexture element correctly.
      */
     ready(): void {
       const self: any = this;
+      const listener: () => void = (): void => {
+        self.stageW = window.innerWidth;
+        self.stageH = window.innerHeight;
+        videoPlayerState.resize(self.stageW as number, self.stageH as number);
+      };
+
+      self.resizeListener = listener;
+      window.addEventListener("resize", listener);
       videoPlayerState.setAppInstance(self);
       videoPlayerState.initialize(self.stageW as number, self.stageH as number);
       videoPlayerState.playUrl(VideoPlayerState.DEMO_URL);
