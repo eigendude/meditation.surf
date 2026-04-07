@@ -40,20 +40,12 @@ const LightningApp: LightningAppFactory = Blits.Application({
 
   hooks: {
     /**
-     * The application is fully rendered and ready. Configure the video
-     * player only after the stage is available so the plugin can find
-     * the VideoTexture element correctly.
+     * The application is fully rendered and ready.
+     * UI lifecycle stays separate from media playback internals.
      */
     ready(): void {
-      const self: any = this;
-      videoPlayerState.setAppInstance(self);
       videoPlayerState.initialize(LIGHTNING_APP_WIDTH, LIGHTNING_APP_HEIGHT);
       videoPlayerState.playUrl(VideoPlayerState.DEMO_URL);
-    },
-
-    /** Clear the app instance reference when the component is destroyed. */
-    destroy(): void {
-      videoPlayerState.clearAppInstance();
     },
   },
 

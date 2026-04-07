@@ -48,7 +48,7 @@ function startApp(): void {
   const fittedStageBounds: FittedStageBounds = getInitialFittedStageBounds();
 
   mount.style.position = "relative";
-  Blits.Launch(LightningApp, "app", {
+  Blits.Launch(LightningApp, mount, {
     w: LIGHTNING_APP_WIDTH,
     h: LIGHTNING_APP_HEIGHT,
   });
