@@ -1,5 +1,0 @@
-{
-  "plugins": ["prettier-plugin-pkg"],
-  "singleQuote": false,
-  "tabWidth": 2
-}
