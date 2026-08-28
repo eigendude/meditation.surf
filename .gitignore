@@ -1,3 +1,8 @@
 .DS_Store
-/content
+__pycache__/
+*.py[cod]
+/content/*
+!/content/cinematic.earth/
+/content/cinematic.earth/*
+!/content/cinematic.earth/*.nfo
 /world

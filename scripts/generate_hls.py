@@ -11,44 +11,39 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import xml.etree.ElementTree as ElementTree
+from dataclasses import dataclass
 from pathlib import Path
 
 
 # -----------------------------------------------------------------------------
-# Hardcoded initial configuration
+# Repository configuration
 # -----------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-SOURCE = (
-    REPO_ROOT
-    / "content"
-    / "cinematic.earth"
-    / "H.264_ES_Collisions_BonnieGrace_LogicPro_3.mp4"
-)
-
 DOMAIN = "cinematic.earth"
 
-MEDIA_ID = "collisions"
-MEDIA_NAME = "Collisions"
-
+CONTENT_ROOT = REPO_ROOT / "content" / DOMAIN
 WORLD_ROOT = REPO_ROOT / "world" / DOMAIN
-MEDIA_ROOT = WORLD_ROOT / MEDIA_ID
 
-VIDEO_DIR = MEDIA_ROOT / "video"
-ATMOS_DIR = MEDIA_ROOT / "audio-atmos"
-AAC_DIR = MEDIA_ROOT / "audio-aac"
-
-MASTER_PLAYLIST = MEDIA_ROOT / "master.m3u8"
-CATALOG = WORLD_ROOT / "catalog.json"
-
-PUBLIC_MEDIA_URL = f"https://{DOMAIN}/{MEDIA_ID}/master.m3u8"
-
-# Only generate the first 20 seconds while developing.
-TEST_DURATION = 20
+# Filesystem identity is intentionally explicit and independent of NFO titles.
+# Add a stable, URL-safe ID here whenever a source video is added.
+MEDIA_IDS = {
+    "H.264_ES_Collisions_BonnieGrace_LogicPro_3.mp4": "collisions",
+    "PIANO_ARTLIST_RoieShpigler_WinterLullaby_16TRACKS_5PAN.mp4": (
+        "winter-lullaby"
+    ),
+    "REAL_SLEEP_THUNDER_Rain_12_10Min._DaVinci_Atmos_MASTER_7.1.4_V.2.mp4": (
+        "sleep-thunder"
+    ),
+    "Real_Relaxation_CinematicEarth_Jazz_1_DolbyAtmosVideo.mp4": (
+        "relaxation-jazz"
+    ),
+}
 
 # HLS target duration. With video stream-copy, actual boundaries will follow
 # source keyframes and can therefore be somewhat longer.
@@ -73,6 +68,147 @@ def require_program(name: str) -> str:
     return path
 
 
+@dataclass(frozen=True)
+class Media:
+    source: Path
+    nfo: Path
+    media_id: str
+    title: str
+    root: Path
+
+
+@dataclass(frozen=True)
+class AnalyzedMedia:
+    media: Media
+    probe: dict
+    video: dict
+    eac3_audio: dict | None
+    fallback_audio: dict
+
+
+def analyze_media(media: Media, probe: dict) -> AnalyzedMedia:
+    streams = probe.get("streams", [])
+    video = next(
+        (
+            stream
+            for stream in streams
+            if stream.get("codec_type") == "video"
+        ),
+        None,
+    )
+
+    if video is None:
+        raise ValueError(f"{media.source}: source contains no video stream")
+
+    if video.get("codec_name") != "h264":
+        raise ValueError(
+            f"{media.source}: stream-copy generation requires H.264 video; "
+            f"found {video.get('codec_name')}"
+        )
+
+    audio_streams = [
+        stream for stream in streams if stream.get("codec_type") == "audio"
+    ]
+
+    if not audio_streams:
+        raise ValueError(f"{media.source}: source contains no audio stream")
+
+    eac3_audio = next(
+        (
+            stream
+            for stream in audio_streams
+            if stream.get("codec_name") == "eac3"
+        ),
+        None,
+    )
+
+    return AnalyzedMedia(
+        media=media,
+        probe=probe,
+        video=video,
+        eac3_audio=eac3_audio,
+        fallback_audio=eac3_audio or audio_streams[0],
+    )
+
+
+def discover_media(
+    content_root: Path,
+    world_root: Path,
+    media_ids: dict[str, str],
+) -> list[Media]:
+    sources = sorted(
+        (
+            path
+            for path in content_root.iterdir()
+            if path.is_file()
+            and path.suffix.lower() == ".mp4"
+            and not path.name.startswith((".", "~"))
+            and not path.stem.lower().endswith((".tmp", ".part", ".partial"))
+        ),
+        key=lambda path: path.name,
+    )
+
+    media = []
+    source_by_id = {}
+
+    for source in sources:
+        nfo = source.with_suffix(".nfo")
+
+        if not nfo.is_file():
+            raise ValueError(f"{source}: {nfo}: missing matching NFO")
+
+        try:
+            root = ElementTree.parse(nfo).getroot()
+        except ElementTree.ParseError as error:
+            raise ValueError(
+                f"{source}: {nfo}: malformed XML: {error}"
+            ) from error
+
+        if root.tag != "movie":
+            raise ValueError(
+                f"{source}: {nfo}: root element must be <movie>"
+            )
+
+        title_element = root.find("title")
+
+        if title_element is None:
+            raise ValueError(f"{source}: {nfo}: missing movie/title")
+
+        title = (title_element.text or "").strip()
+
+        if not title:
+            raise ValueError(f"{source}: {nfo}: empty movie/title")
+
+        media_id = media_ids.get(source.name)
+
+        if media_id is None:
+            raise ValueError(f"{source}: no media ID configured")
+
+        if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", media_id) is None:
+            raise ValueError(f"{source}: unsafe media ID: {media_id}")
+
+        previous_source = source_by_id.get(media_id)
+
+        if previous_source is not None:
+            raise ValueError(
+                f"{previous_source} and {source}: duplicate media ID: {media_id}"
+            )
+
+        source_by_id[media_id] = source
+
+        media.append(
+            Media(
+                source=source,
+                nfo=nfo,
+                media_id=media_id,
+                title=title,
+                root=world_root / media_id,
+            )
+        )
+
+    return media
+
+
 FFMPEG = require_program("ffmpeg")
 FFPROBE = require_program("ffprobe")
 
@@ -83,7 +219,7 @@ def run(command: list[str], *, cwd: Path | None = None) -> None:
     subprocess.run(command, cwd=cwd, check=True)
 
 
-def probe_source() -> dict:
+def probe_source(source: Path) -> dict:
     command = [
         FFPROBE,
         "-v",
@@ -92,17 +228,28 @@ def probe_source() -> dict:
         "-show_format",
         "-of",
         "json",
-        str(SOURCE),
+        str(source),
     ]
 
-    result = subprocess.run(
-        command,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as error:
+        detail = (error.stderr or "").strip() or str(error)
+        raise ValueError(
+            f"{source}: ffprobe failed: {detail}"
+        ) from error
 
-    return json.loads(result.stdout)
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            f"{source}: ffprobe returned invalid JSON: {error}"
+        ) from error
 
 
 def parse_frame_rate(value: str | None) -> float | None:
@@ -149,7 +296,12 @@ def is_atmos(stream: dict) -> bool:
     if stream.get("codec_name") != "eac3":
         return False
 
-    metadata = json.dumps(stream).lower()
+    technical_metadata = {
+        "codec_long_name": stream.get("codec_long_name"),
+        "profile": stream.get("profile"),
+        "side_data_list": stream.get("side_data_list", []),
+    }
+    metadata = json.dumps(technical_metadata).lower()
 
     return "atmos" in metadata or "joc" in metadata
 
@@ -208,11 +360,7 @@ def generate_directory_stage(
         raise
 
 
-def write_once(path: Path, contents: str) -> None:
-    if path.exists():
-        print(f"SKIP file: {path} already exists")
-        return
-
+def write_file(path: Path, contents: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     temporary = path.with_name(f".{path.name}.tmp")
@@ -248,15 +396,13 @@ def hls_common() -> list[str]:
     ]
 
 
-def video_command(video: dict) -> list[str]:
+def video_command(media: Media, video: dict) -> list[str]:
     return [
         FFMPEG,
         "-hide_banner",
         "-y",
         "-i",
-        str(SOURCE),
-        "-t",
-        str(TEST_DURATION),
+        str(media.source),
         "-map",
         f"0:{video['index']}",
         "-an",
@@ -268,15 +414,13 @@ def video_command(video: dict) -> list[str]:
     ]
 
 
-def atmos_command(audio: dict) -> list[str]:
+def atmos_command(media: Media, audio: dict) -> list[str]:
     return [
         FFMPEG,
         "-hide_banner",
         "-y",
         "-i",
-        str(SOURCE),
-        "-t",
-        str(TEST_DURATION),
+        str(media.source),
         "-map",
         f"0:{audio['index']}",
         "-vn",
@@ -286,15 +430,13 @@ def atmos_command(audio: dict) -> list[str]:
     ]
 
 
-def aac_command(audio: dict) -> list[str]:
+def aac_command(media: Media, audio: dict) -> list[str]:
     return [
         FFMPEG,
         "-hide_banner",
         "-y",
         "-i",
-        str(SOURCE),
-        "-t",
-        str(TEST_DURATION),
+        str(media.source),
         "-map",
         f"0:{audio['index']}",
         "-vn",
@@ -407,19 +549,113 @@ def make_master_playlist(
 # Catalog
 # -----------------------------------------------------------------------------
 
-def make_catalog() -> str:
+def make_catalog(media: list[Media]) -> str:
     catalog = {
         "version": 1,
         "items": [
             {
-                "id": MEDIA_ID,
-                "name": MEDIA_NAME,
-                "media": PUBLIC_MEDIA_URL,
+                "id": item.media_id,
+                "name": item.title,
+                "media": (
+                    f"https://{DOMAIN}/{item.media_id}/master.m3u8"
+                ),
             }
+            for item in media
         ],
     }
 
     return json.dumps(catalog, indent=2) + "\n"
+
+
+# -----------------------------------------------------------------------------
+# Per-media generation
+# -----------------------------------------------------------------------------
+
+def generate_media(analyzed: AnalyzedMedia) -> None:
+    media = analyzed.media
+    media.root.mkdir(parents=True, exist_ok=True)
+
+    generate_directory_stage(
+        "video",
+        media.root / "video",
+        video_command(media, analyzed.video),
+    )
+
+    if analyzed.eac3_audio is not None:
+        generate_directory_stage(
+            "high-quality E-AC-3 audio",
+            media.root / "audio-atmos",
+            atmos_command(media, analyzed.eac3_audio),
+        )
+
+    generate_directory_stage(
+        "AAC stereo audio",
+        media.root / "audio-aac",
+        aac_command(media, analyzed.fallback_audio),
+    )
+
+    write_file(
+        media.root / "master.m3u8",
+        make_master_playlist(
+            analyzed.probe,
+            analyzed.video,
+            analyzed.eac3_audio,
+        ),
+    )
+
+
+def build_world(
+    content_root: Path,
+    world_root: Path,
+    media_ids: dict[str, str],
+    *,
+    probe=probe_source,
+    generate=generate_media,
+) -> list[Media]:
+    media = discover_media(content_root, world_root, media_ids)
+    analyzed_media = [
+        analyze_media(item, probe(item.source))
+        for item in media
+    ]
+
+    for index, analyzed in enumerate(analyzed_media, start=1):
+        item = analyzed.media
+        video = analyzed.video
+
+        print()
+        print(f"Media {index}/{len(analyzed_media)}: {item.title}")
+        print(f"  Source: {item.source}")
+        print(f"  NFO:    {item.nfo}")
+        print(f"  ID:     {item.media_id}")
+        print(f"  Output: {item.root}")
+        print(
+            "  Video:  "
+            f"stream {video['index']}, {stream_description(video)}, "
+            f"{video.get('width', '?')}x{video.get('height', '?')}"
+        )
+
+        if analyzed.eac3_audio is not None:
+            eac3 = analyzed.eac3_audio
+            atmos_suffix = " [Atmos/JOC detected]" if is_atmos(eac3) else ""
+            print(
+                "  Audio:  "
+                f"stream {eac3['index']}, {stream_description(eac3)}"
+                f"{atmos_suffix}"
+            )
+        else:
+            print("  Audio:  no E-AC-3 high-quality rendition")
+
+        print(
+            "  AAC:    "
+            f"stream {analyzed.fallback_audio['index']}, "
+            f"{stream_description(analyzed.fallback_audio)}"
+        )
+
+        generate(analyzed)
+
+    write_file(world_root / "catalog.json", make_catalog(media))
+
+    return media
 
 
 # -----------------------------------------------------------------------------
@@ -428,135 +664,27 @@ def make_catalog() -> str:
 
 def main() -> None:
     print(f"Repository: {REPO_ROOT}")
-    print(f"Source:     {SOURCE}")
     print(f"Domain:     {DOMAIN}")
-    print(f"Output:     {MEDIA_ROOT}")
-    print(f"Duration:   first {TEST_DURATION} seconds")
+    print(f"Sources:    {CONTENT_ROOT}")
+    print(f"Output:     {WORLD_ROOT}")
+    print("Duration:   full source (to EOF)")
     print()
 
-    if not SOURCE.is_file():
-        die(f"source does not exist: {SOURCE}")
-
-    probe = probe_source()
-
-    streams = probe.get("streams", [])
-
-    video_streams = [
-        stream for stream in streams
-        if stream.get("codec_type") == "video"
-    ]
-
-    audio_streams = [
-        stream for stream in streams
-        if stream.get("codec_type") == "audio"
-    ]
-
-    if not video_streams:
-        die("source contains no video stream")
-
-    if not audio_streams:
-        die("source contains no audio stream")
-
-    video = video_streams[0]
-
-    if video.get("codec_name") != "h264":
-        die(
-            "initial generator expects H.264 so it can stream-copy video; "
-            f"found {video.get('codec_name')}"
-        )
-
-    print(
-        "Video:",
-        f"stream {video['index']},",
-        stream_description(video),
-        f"{video.get('width', '?')}x{video.get('height', '?')}",
-    )
-
-    print("Audio streams:")
-
-    for audio in audio_streams:
-        suffix = ""
-
-        if is_atmos(audio):
-            suffix = " [Atmos/JOC detected]"
-
-        print(
-            f"  stream {audio['index']}: "
-            f"{stream_description(audio)}{suffix}"
-        )
-
-    # Prefer E-AC-3 for the high-quality/Atmos rendition.
-    atmos_audio = next(
-        (
-            stream
-            for stream in audio_streams
-            if stream.get("codec_name") == "eac3"
-        ),
-        None,
-    )
-
-    # Generate AAC from the same E-AC-3 stream when possible so the two
-    # renditions represent the same program.
-    fallback_audio = atmos_audio or audio_streams[0]
-
-    if atmos_audio is not None:
-        if is_atmos(atmos_audio):
-            print(
-                f"\nSelected stream {atmos_audio['index']} "
-                "for Dolby Atmos / E-AC-3."
-            )
-        else:
-            print(
-                f"\nSelected E-AC-3 stream {atmos_audio['index']}. "
-                "ffprobe did not explicitly identify JOC/Atmos."
-            )
-    else:
-        print(
-            "\nNo E-AC-3 stream found; no audio-atmos rendition "
-            "will be generated."
-        )
-
-    print(
-        f"Selected stream {fallback_audio['index']} "
-        "for AAC stereo fallback."
-    )
-
-    MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
-
-    generate_directory_stage(
-        "video",
-        VIDEO_DIR,
-        video_command(video),
-    )
-
-    if atmos_audio is not None:
-        generate_directory_stage(
-            "E-AC-3 / Atmos audio",
-            ATMOS_DIR,
-            atmos_command(atmos_audio),
-        )
-
-    generate_directory_stage(
-        "AAC stereo audio",
-        AAC_DIR,
-        aac_command(fallback_audio),
-    )
-
-    write_once(
-        MASTER_PLAYLIST,
-        make_master_playlist(probe, video, atmos_audio),
-    )
-
-    write_once(
-        CATALOG,
-        make_catalog(),
-    )
+    try:
+        media = build_world(CONTENT_ROOT, WORLD_ROOT, MEDIA_IDS)
+    except ValueError as error:
+        die(str(error))
 
     print()
     print("Done.")
     print()
     print(f"Catalog: https://{DOMAIN}/catalog.json")
-    print(f"Media:   {PUBLIC_MEDIA_URL}")
+
+    for item in media:
+        print(
+            f"Media:   https://{DOMAIN}/{item.media_id}/master.m3u8"
+        )
+
     print()
     print("Generated tree:")
 
