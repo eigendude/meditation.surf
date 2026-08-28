@@ -322,42 +322,11 @@ def generate_directory_stage(
     target: Path,
     command: list[str],
 ) -> None:
-    """
-    Generate a directory atomically.
-
-    Completed directories are never regenerated.
-
-    If the previous invocation was aborted, only the incomplete .tmp directory
-    is removed and that stage starts again.
-    """
-    if target.exists():
-        print(f"SKIP {name}: {target} already exists")
-        return
-
-    temporary = target.with_name(f".{target.name}.tmp")
-
-    if temporary.exists():
-        print(f"Removing incomplete stage: {temporary}")
-        shutil.rmtree(temporary)
-
-    temporary.mkdir(parents=True)
+    target.mkdir(parents=True)
 
     print(f"GENERATE {name}")
-
-    try:
-        run(command, cwd=temporary)
-        verify_hls_directory(temporary)
-        temporary.rename(target)
-    except KeyboardInterrupt:
-        print()
-        print(f"Interrupted. Incomplete stage left at {temporary}")
-        print("Run the script again to resume from this stage.")
-        raise
-    except Exception:
-        print()
-        print(f"Stage failed. Incomplete output left at {temporary}")
-        print("Run the script again to retry this stage.")
-        raise
+    run(command, cwd=target)
+    verify_hls_directory(target)
 
 
 def write_file(path: Path, contents: str) -> None:
@@ -556,9 +525,7 @@ def make_catalog(media: list[Media]) -> str:
             {
                 "id": item.media_id,
                 "name": item.title,
-                "media": (
-                    f"https://{DOMAIN}/{item.media_id}/master.m3u8"
-                ),
+                "media": f"{item.media_id}/master.m3u8",
             }
             for item in media
         ],
@@ -617,6 +584,10 @@ def build_world(
         analyze_media(item, probe(item.source))
         for item in media
     ]
+
+    if world_root.exists():
+        shutil.rmtree(world_root)
+    world_root.mkdir(parents=True)
 
     for index, analyzed in enumerate(analyzed_media, start=1):
         item = analyzed.media

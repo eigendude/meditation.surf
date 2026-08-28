@@ -290,12 +290,12 @@ class CatalogTests(unittest.TestCase):
                     {
                         "id": "alpha",
                         "name": "Alpha Title",
-                        "media": "https://cinematic.earth/alpha/master.m3u8",
+                        "media": "alpha/master.m3u8",
                     },
                     {
                         "id": "bravo",
                         "name": "Bravo Title",
-                        "media": "https://cinematic.earth/bravo/master.m3u8",
+                        "media": "bravo/master.m3u8",
                     },
                 ],
             },
@@ -371,71 +371,15 @@ class FileTests(unittest.TestCase):
 
 
 class GenerationTests(unittest.TestCase):
-    def test_generation_reuses_stages_and_rewrites_master_playlist(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory) / "world" / "alpha"
-            for stage_name in ("video", "audio-atmos", "audio-aac"):
-                stage = root / stage_name
-                stage.mkdir(parents=True)
-                (stage / "sentinel").write_text("keep", encoding="utf-8")
-
-            master = root / "master.m3u8"
-            master.write_text("stale\n", encoding="utf-8")
-            media = generate_hls.Media(
-                source=Path("/sources/alpha.mp4"),
-                nfo=Path("/sources/alpha.nfo"),
-                media_id="alpha",
-                title="Alpha",
-                root=root,
-            )
-            probe = {
-                "streams": [
-                    {
-                        "index": 0,
-                        "codec_type": "video",
-                        "codec_name": "h264",
-                        "width": 1920,
-                        "height": 1080,
-                        "avg_frame_rate": "24/1",
-                    },
-                    {
-                        "index": 1,
-                        "codec_type": "audio",
-                        "codec_name": "eac3",
-                        "channels": 6,
-                    },
-                ],
-                "format": {"bit_rate": "10000000"},
-            }
-            analyzed = generate_hls.analyze_media(media, probe)
-
-            try:
-                generate_hls.generate_media(analyzed)
-            except AttributeError as error:
-                self.fail(f"per-media generation is missing: {error}")
-
-            self.assertEqual(
-                (root / "video" / "sentinel").read_text(encoding="utf-8"),
-                "keep",
-            )
-            self.assertEqual(
-                (root / "audio-atmos" / "sentinel").read_text(
-                    encoding="utf-8"
-                ),
-                "keep",
-            )
-            self.assertEqual(
-                (root / "audio-aac" / "sentinel").read_text(encoding="utf-8"),
-                "keep",
-            )
-            self.assertTrue(master.read_text(encoding="utf-8").startswith("#EXTM3U\n"))
-
     def test_all_sources_are_probed_before_any_generation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             repository = Path(temporary_directory)
             content_root = repository / "content"
             world_root = repository / "world"
             content_root.mkdir()
+            stale = world_root / "stale"
+            stale.parent.mkdir()
+            stale.write_text("keep", encoding="utf-8")
 
             for filename in ("a.mp4", "b.mp4"):
                 source = content_root / filename
@@ -485,6 +429,7 @@ class GenerationTests(unittest.TestCase):
                 )
 
             self.assertEqual(events, ["probe:a.mp4", "probe:b.mp4"])
+            self.assertTrue(stale.exists())
             self.assertFalse((world_root / "catalog.json").exists())
 
     def test_successful_build_generates_all_media_then_writes_catalog(self) -> None:
@@ -493,6 +438,9 @@ class GenerationTests(unittest.TestCase):
             content_root = repository / "content"
             world_root = repository / "world"
             content_root.mkdir()
+            stale = world_root / "stale"
+            stale.parent.mkdir()
+            stale.write_text("discard", encoding="utf-8")
 
             for filename, title in (
                 ("a.mp4", "Alpha"),
@@ -526,6 +474,7 @@ class GenerationTests(unittest.TestCase):
                 }
 
             def generate(analyzed) -> None:
+                self.assertFalse(stale.exists())
                 events.append(f"generate:{analyzed.media.source.name}")
 
             generate_hls.build_world(
@@ -545,6 +494,7 @@ class GenerationTests(unittest.TestCase):
                     "generate:b.mp4",
                 ],
             )
+            self.assertFalse(stale.exists())
             self.assertEqual(
                 json.loads((world_root / "catalog.json").read_text("utf-8")),
                 {
@@ -553,12 +503,12 @@ class GenerationTests(unittest.TestCase):
                         {
                             "id": "alpha",
                             "name": "Alpha",
-                            "media": "https://cinematic.earth/alpha/master.m3u8",
+                            "media": "alpha/master.m3u8",
                         },
                         {
                             "id": "bravo",
                             "name": "Bravo",
-                            "media": "https://cinematic.earth/bravo/master.m3u8",
+                            "media": "bravo/master.m3u8",
                         },
                     ],
                 },

@@ -11,7 +11,7 @@
 import json
 import sys
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 import xbmc
 import xbmcgui
@@ -22,6 +22,27 @@ ADDON_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = ADDON_ROOT.parent.parent
 
 CATALOG_PATH = REPO_ROOT / "world" / "cinematic.earth" / "catalog.json"
+
+
+def resolve_media_uri(media: str, catalog_path: Path = CATALOG_PATH) -> str:
+    """Resolve catalog-relative media safely from the catalog's directory."""
+    if not isinstance(media, str) or not media:
+        raise ValueError("Catalog media must be a non-empty string")
+
+    if urlparse(media).scheme:
+        return media
+
+    root = catalog_path.parent.resolve()
+    candidate = (root / media).resolve()
+
+    try:
+        candidate.relative_to(root)
+    except ValueError as error:
+        raise ValueError(
+            f"Catalog media escapes catalog root: {media}"
+        ) from error
+
+    return candidate.as_uri()
 
 
 def load_catalog():
@@ -116,7 +137,20 @@ def play(plugin_handle, item_id):
         )
         return
 
-    media = item["media"]
+    try:
+        media = resolve_media_uri(item.get("media"), CATALOG_PATH)
+    except ValueError as error:
+        xbmc.log(
+            f"plugin.cinematic.earth: Failed to resolve media for "
+            f"'{item_id}': {error}",
+            xbmc.LOGERROR,
+        )
+        xbmcplugin.setResolvedUrl(
+            plugin_handle,
+            False,
+            xbmcgui.ListItem(),
+        )
+        return
 
     xbmc.log(
         f"plugin.cinematic.earth: Playing {media}",
