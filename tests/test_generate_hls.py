@@ -16,6 +16,15 @@ sys.modules[SPEC.name] = generate_hls
 SPEC.loader.exec_module(generate_hls)
 
 
+def write_artwork_sidecars(source: Path) -> None:
+    source.with_name(f"{source.stem}-poster.jpg").write_bytes(b"poster")
+    source.with_name(f"{source.stem}-fanart.jpg").write_bytes(b"fanart")
+
+
+def accept_artwork(_source: Path, _art_type: str) -> None:
+    pass
+
+
 class CommandTests(unittest.TestCase):
     def assert_command_pair(
         self,
@@ -291,11 +300,21 @@ class CatalogTests(unittest.TestCase):
                         "id": "alpha",
                         "name": "Alpha Title",
                         "media": "alpha/master.m3u8",
+                        "art": {
+                            "thumb": "alpha/poster.jpg",
+                            "poster": "alpha/poster.jpg",
+                            "fanart": "alpha/fanart.jpg",
+                        },
                     },
                     {
                         "id": "bravo",
                         "name": "Bravo Title",
                         "media": "bravo/master.m3u8",
+                        "art": {
+                            "thumb": "bravo/poster.jpg",
+                            "poster": "bravo/poster.jpg",
+                            "fanart": "bravo/fanart.jpg",
+                        },
                     },
                 ],
             },
@@ -370,7 +389,207 @@ class FileTests(unittest.TestCase):
             )
 
 
+class ArtworkTests(unittest.TestCase):
+    def test_copies_kodi_sidecars_into_media_world_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "content" / "alpha.mp4"
+            source.parent.mkdir()
+            source.touch()
+            source.with_name("alpha-poster.jpg").write_bytes(b"poster")
+            source.with_name("alpha-fanart.jpg").write_bytes(b"fanart")
+            media = generate_hls.Media(
+                source=source,
+                nfo=source.with_suffix(".nfo"),
+                media_id="alpha",
+                title="Alpha",
+                root=root / "world" / "alpha",
+            )
+
+            try:
+                generate_hls.copy_artwork(media)
+            except AttributeError as error:
+                self.fail(f"artwork copying is missing: {error}")
+
+            self.assertEqual(
+                (media.root / "poster.jpg").read_bytes(),
+                b"poster",
+            )
+            self.assertEqual(
+                (media.root / "fanart.jpg").read_bytes(),
+                b"fanart",
+            )
+
+
+class ArtworkValidationTests(unittest.TestCase):
+    def test_rejects_non_jpeg_artwork(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            r"alpha-poster\.jpg.*JPEG.*png",
+        ):
+            generate_hls.validate_artwork_metadata(
+                Path("/content/alpha-poster.jpg"),
+                "poster",
+                {
+                    "streams": [{
+                        "codec_type": "video",
+                        "codec_name": "png",
+                        "width": 1000,
+                        "height": 1500,
+                    }],
+                },
+            )
+
+    def test_rejects_artwork_with_wrong_dimensions(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            r"alpha-fanart\.jpg.*1920x1080.*1280x720",
+        ):
+            generate_hls.validate_artwork_metadata(
+                Path("/content/alpha-fanart.jpg"),
+                "fanart",
+                {
+                    "streams": [{
+                        "codec_type": "video",
+                        "codec_name": "mjpeg",
+                        "width": 1280,
+                        "height": 720,
+                    }],
+                },
+            )
+
+    def test_decode_failure_identifies_artwork_before_generation(self) -> None:
+        source = Path("/content/alpha-poster.jpg")
+        probe = {
+            "streams": [{
+                "codec_type": "video",
+                "codec_name": "mjpeg",
+                "width": 1000,
+                "height": 1500,
+            }],
+        }
+        failure = generate_hls.subprocess.CalledProcessError(
+            1,
+            ["ffmpeg"],
+            stderr="corrupt JPEG data",
+        )
+
+        with (
+            mock.patch.object(
+                generate_hls,
+                "probe_source",
+                return_value=probe,
+            ),
+            mock.patch.object(
+                generate_hls.subprocess,
+                "run",
+                side_effect=failure,
+            ) as run,
+        ):
+            with self.assertRaisesRegex(
+                ValueError,
+                r"alpha-poster\.jpg.*decode.*corrupt JPEG data",
+            ):
+                generate_hls.validate_artwork_source(source, "poster")
+
+        command = run.call_args.args[0]
+        self.assertIn("-xerror", command)
+        self.assertIn(str(source), command)
+
+
 class GenerationTests(unittest.TestCase):
+    def test_missing_poster_preserves_existing_world(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory)
+            content_root = repository / "content"
+            world_root = repository / "world"
+            content_root.mkdir()
+            stale = world_root / "stale"
+            stale.parent.mkdir()
+            stale.write_text("keep", encoding="utf-8")
+
+            source = content_root / "a.mp4"
+            source.touch()
+            source.with_suffix(".nfo").write_text(
+                "<movie><title>Alpha</title></movie>",
+                encoding="utf-8",
+            )
+            source.with_name("a-fanart.jpg").write_bytes(b"fanart")
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"a\.mp4.*a-poster\.jpg.*missing",
+            ):
+                generate_hls.build_world(
+                    content_root,
+                    world_root,
+                    {"a.mp4": "alpha"},
+                    probe=lambda _: {
+                        "streams": [
+                            {
+                                "index": 0,
+                                "codec_type": "video",
+                                "codec_name": "h264",
+                            },
+                            {
+                                "index": 1,
+                                "codec_type": "audio",
+                                "codec_name": "aac",
+                            },
+                        ],
+                        "format": {},
+                    },
+                    generate=lambda _: None,
+                )
+
+            self.assertTrue(stale.exists())
+
+    def test_missing_fanart_preserves_existing_world(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory)
+            content_root = repository / "content"
+            world_root = repository / "world"
+            content_root.mkdir()
+            stale = world_root / "stale"
+            stale.parent.mkdir()
+            stale.write_text("keep", encoding="utf-8")
+
+            source = content_root / "a.mp4"
+            source.touch()
+            source.with_suffix(".nfo").write_text(
+                "<movie><title>Alpha</title></movie>",
+                encoding="utf-8",
+            )
+            source.with_name("a-poster.jpg").write_bytes(b"poster")
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"a\.mp4.*a-fanart\.jpg.*missing",
+            ):
+                generate_hls.build_world(
+                    content_root,
+                    world_root,
+                    {"a.mp4": "alpha"},
+                    probe=lambda _: {
+                        "streams": [
+                            {
+                                "index": 0,
+                                "codec_type": "video",
+                                "codec_name": "h264",
+                            },
+                            {
+                                "index": 1,
+                                "codec_type": "audio",
+                                "codec_name": "aac",
+                            },
+                        ],
+                        "format": {},
+                    },
+                    generate=lambda _: None,
+                )
+
+            self.assertTrue(stale.exists())
+
     def test_missing_configured_source_preserves_existing_world(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             repository = Path(temporary_directory)
@@ -416,6 +635,58 @@ class GenerationTests(unittest.TestCase):
 
             self.assertTrue(stale.exists())
 
+    def test_invalid_artwork_preserves_existing_world(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory)
+            content_root = repository / "content"
+            world_root = repository / "world"
+            content_root.mkdir()
+            stale = world_root / "stale"
+            stale.parent.mkdir()
+            stale.write_text("keep", encoding="utf-8")
+
+            source = content_root / "a.mp4"
+            source.touch()
+            write_artwork_sidecars(source)
+            source.with_suffix(".nfo").write_text(
+                "<movie><title>Alpha</title></movie>",
+                encoding="utf-8",
+            )
+
+            def reject_artwork(artwork: Path, art_type: str) -> None:
+                raise ValueError(
+                    f"{artwork}: invalid {art_type} artwork"
+                )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"a-poster\.jpg.*invalid poster artwork",
+            ):
+                generate_hls.build_world(
+                    content_root,
+                    world_root,
+                    {"a.mp4": "alpha"},
+                    artwork_validator=reject_artwork,
+                    probe=lambda _: {
+                        "streams": [
+                            {
+                                "index": 0,
+                                "codec_type": "video",
+                                "codec_name": "h264",
+                            },
+                            {
+                                "index": 1,
+                                "codec_type": "audio",
+                                "codec_name": "aac",
+                            },
+                        ],
+                        "format": {},
+                    },
+                    generate=lambda _: None,
+                )
+
+            self.assertTrue(stale.exists())
+
     def test_all_sources_are_probed_before_any_generation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             repository = Path(temporary_directory)
@@ -429,6 +700,7 @@ class GenerationTests(unittest.TestCase):
             for filename in ("a.mp4", "b.mp4"):
                 source = content_root / filename
                 source.touch()
+                write_artwork_sidecars(source)
                 source.with_suffix(".nfo").write_text(
                     f"<movie><title>{filename}</title></movie>",
                     encoding="utf-8",
@@ -469,6 +741,7 @@ class GenerationTests(unittest.TestCase):
                     content_root,
                     world_root,
                     {"a.mp4": "alpha", "b.mp4": "bravo"},
+                    artwork_validator=accept_artwork,
                     probe=probe,
                     generate=generate,
                 )
@@ -493,6 +766,7 @@ class GenerationTests(unittest.TestCase):
             ):
                 source = content_root / filename
                 source.touch()
+                write_artwork_sidecars(source)
                 source.with_suffix(".nfo").write_text(
                     f"<movie><title>{title}</title></movie>",
                     encoding="utf-8",
@@ -526,6 +800,7 @@ class GenerationTests(unittest.TestCase):
                 content_root,
                 world_root,
                 {"a.mp4": "alpha", "b.mp4": "bravo"},
+                artwork_validator=accept_artwork,
                 probe=probe,
                 generate=generate,
             )
@@ -540,6 +815,15 @@ class GenerationTests(unittest.TestCase):
                 ],
             )
             self.assertFalse(stale.exists())
+            for media_id in ("alpha", "bravo"):
+                self.assertEqual(
+                    (world_root / media_id / "poster.jpg").read_bytes(),
+                    b"poster",
+                )
+                self.assertEqual(
+                    (world_root / media_id / "fanart.jpg").read_bytes(),
+                    b"fanart",
+                )
             self.assertEqual(
                 json.loads((world_root / "catalog.json").read_text("utf-8")),
                 {
@@ -549,11 +833,21 @@ class GenerationTests(unittest.TestCase):
                             "id": "alpha",
                             "name": "Alpha",
                             "media": "alpha/master.m3u8",
+                            "art": {
+                                "thumb": "alpha/poster.jpg",
+                                "poster": "alpha/poster.jpg",
+                                "fanart": "alpha/fanart.jpg",
+                            },
                         },
                         {
                             "id": "bravo",
                             "name": "Bravo",
                             "media": "bravo/master.m3u8",
+                            "art": {
+                                "thumb": "bravo/poster.jpg",
+                                "poster": "bravo/poster.jpg",
+                                "fanart": "bravo/fanart.jpg",
+                            },
                         },
                     ],
                 },
@@ -571,12 +865,14 @@ class DiscoveryTests(unittest.TestCase):
         content_root.mkdir()
         source = content_root / "source.mp4"
         source.touch()
+        write_artwork_sidecars(source)
         source.with_suffix(".nfo").write_text(nfo_contents, encoding="utf-8")
 
         return generate_hls.discover_media(
             content_root,
             repository / "world",
             {source.name: "source"},
+            artwork_validator=accept_artwork,
         )
 
     def test_discovers_direct_mp4s_in_filename_order_with_nfo_titles(self) -> None:
@@ -590,8 +886,10 @@ class DiscoveryTests(unittest.TestCase):
                 ("b.mp4", "  Bravo  "),
                 ("a.mp4", "Alpha"),
             ):
-                (content_root / filename).touch()
-                (content_root / filename).with_suffix(".nfo").write_text(
+                source = content_root / filename
+                source.touch()
+                write_artwork_sidecars(source)
+                source.with_suffix(".nfo").write_text(
                     f"<movie><title>{title}</title></movie>",
                     encoding="utf-8",
                 )
@@ -607,6 +905,7 @@ class DiscoveryTests(unittest.TestCase):
                 content_root,
                 world_root,
                 {"a.mp4": "alpha", "b.mp4": "bravo"},
+                artwork_validator=accept_artwork,
             )
 
             self.assertEqual(
@@ -719,6 +1018,7 @@ class DiscoveryTests(unittest.TestCase):
             content_root.mkdir()
             source = content_root / "source.mp4"
             source.touch()
+            write_artwork_sidecars(source)
             source.with_suffix(".nfo").write_text(
                 "<movie><title>Source</title></movie>",
                 encoding="utf-8",
@@ -729,6 +1029,7 @@ class DiscoveryTests(unittest.TestCase):
                     content_root,
                     repository / "world",
                     {},
+                    artwork_validator=accept_artwork,
                 )
             except Exception as error:
                 self.assertIsInstance(error, ValueError)
@@ -747,6 +1048,7 @@ class DiscoveryTests(unittest.TestCase):
                 content_root.mkdir()
                 source = content_root / "source.mp4"
                 source.touch()
+                write_artwork_sidecars(source)
                 source.with_suffix(".nfo").write_text(
                     "<movie><title>Source</title></movie>",
                     encoding="utf-8",
@@ -755,6 +1057,7 @@ class DiscoveryTests(unittest.TestCase):
                     content_root,
                     repository / "world",
                     {source.name: "../outside"},
+                    artwork_validator=accept_artwork,
                 )
 
     def test_rejects_duplicate_media_ids(self) -> None:
@@ -766,6 +1069,7 @@ class DiscoveryTests(unittest.TestCase):
             for filename in ("a.mp4", "b.mp4"):
                 source = content_root / filename
                 source.touch()
+                write_artwork_sidecars(source)
                 source.with_suffix(".nfo").write_text(
                     f"<movie><title>{filename}</title></movie>",
                     encoding="utf-8",
@@ -779,6 +1083,7 @@ class DiscoveryTests(unittest.TestCase):
                     content_root,
                     repository / "world",
                     {"a.mp4": "same", "b.mp4": "same"},
+                    artwork_validator=accept_artwork,
                 )
 
 

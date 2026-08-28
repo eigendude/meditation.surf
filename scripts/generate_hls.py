@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ElementTree
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -51,6 +52,11 @@ SEGMENT_DURATION = 4
 
 AAC_BITRATE = "256k"
 
+ARTWORK_DIMENSIONS: dict[str, tuple[int, int]] = {
+    "poster": (1000, 1500),
+    "fanart": (1920, 1080),
+}
+
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -84,6 +90,13 @@ class AnalyzedMedia:
     video: dict
     eac3_audio: dict | None
     fallback_audio: dict
+
+
+def artwork_sources(source: Path) -> dict[str, Path]:
+    return {
+        "poster": source.with_name(f"{source.stem}-poster.jpg"),
+        "fanart": source.with_name(f"{source.stem}-fanart.jpg"),
+    }
 
 
 def analyze_media(media: Media, probe: dict) -> AnalyzedMedia:
@@ -135,7 +148,12 @@ def discover_media(
     content_root: Path,
     world_root: Path,
     media_ids: dict[str, str],
+    *,
+    artwork_validator: Callable[[Path, str], None] | None = None,
 ) -> list[Media]:
+    if artwork_validator is None:
+        artwork_validator = validate_artwork_source
+
     sources = sorted(
         (
             path
@@ -188,6 +206,17 @@ def discover_media(
 
         if not title:
             raise ValueError(f"{source}: {nfo}: empty movie/title")
+
+        artwork = artwork_sources(source)
+
+        for path in artwork.values():
+            if not path.is_file():
+                raise ValueError(
+                    f"{source}: {path}: missing matching artwork"
+                )
+
+        for art_type, path in artwork.items():
+            artwork_validator(path, art_type)
 
         media_id = media_ids.get(source.name)
 
@@ -259,6 +288,75 @@ def probe_source(source: Path) -> dict:
     except json.JSONDecodeError as error:
         raise ValueError(
             f"{source}: ffprobe returned invalid JSON: {error}"
+        ) from error
+
+
+def validate_artwork_metadata(
+    source: Path,
+    art_type: str,
+    probe: dict,
+) -> None:
+    expected_width, expected_height = ARTWORK_DIMENSIONS[art_type]
+    image = next(
+        (
+            stream
+            for stream in probe.get("streams", [])
+            if stream.get("codec_type") == "video"
+        ),
+        None,
+    )
+
+    if image is None:
+        found = "no video stream"
+    else:
+        codec = image.get("codec_name", "unknown codec")
+        width = image.get("width", "?")
+        height = image.get("height", "?")
+        found = f"{codec} {width}x{height}"
+
+    if (
+        image is None
+        or image.get("codec_name") != "mjpeg"
+        or image.get("width") != expected_width
+        or image.get("height") != expected_height
+    ):
+        raise ValueError(
+            f"{source}: invalid {art_type} artwork: expected JPEG "
+            f"{expected_width}x{expected_height}; found {found}"
+        )
+
+
+def validate_artwork_source(source: Path, art_type: str) -> None:
+    validate_artwork_metadata(source, art_type, probe_source(source))
+
+    command = [
+        FFMPEG,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-xerror",
+        "-i",
+        str(source),
+        "-map",
+        "0:v:0",
+        "-frames:v",
+        "1",
+        "-f",
+        "null",
+        "-",
+    ]
+
+    try:
+        subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as error:
+        detail = (error.stderr or "").strip() or str(error)
+        raise ValueError(
+            f"{source}: artwork decode failed: {detail}"
         ) from error
 
 
@@ -351,6 +449,15 @@ def write_file(path: Path, contents: str) -> None:
     os.replace(temporary, path)
 
     print(f"WRITE {path}")
+
+
+def copy_artwork(media: Media) -> None:
+    media.root.mkdir(parents=True, exist_ok=True)
+
+    for art_type, source in artwork_sources(media.source).items():
+        target = media.root / f"{art_type}.jpg"
+        shutil.copy2(source, target)
+        print(f"COPY {source} -> {target}")
 
 
 # -----------------------------------------------------------------------------
@@ -536,6 +643,11 @@ def make_catalog(media: list[Media]) -> str:
                 "id": item.media_id,
                 "name": item.title,
                 "media": f"{item.media_id}/master.m3u8",
+                "art": {
+                    "thumb": f"{item.media_id}/poster.jpg",
+                    "poster": f"{item.media_id}/poster.jpg",
+                    "fanart": f"{item.media_id}/fanart.jpg",
+                },
             }
             for item in media
         ],
@@ -586,10 +698,18 @@ def build_world(
     world_root: Path,
     media_ids: dict[str, str],
     *,
-    probe=probe_source,
-    generate=generate_media,
+    artwork_validator: Callable[[Path, str], None] = (
+        validate_artwork_source
+    ),
+    probe: Callable[[Path], dict] = probe_source,
+    generate: Callable[[AnalyzedMedia], None] = generate_media,
 ) -> list[Media]:
-    media = discover_media(content_root, world_root, media_ids)
+    media = discover_media(
+        content_root,
+        world_root,
+        media_ids,
+        artwork_validator=artwork_validator,
+    )
     analyzed_media = [
         analyze_media(item, probe(item.source))
         for item in media
@@ -632,6 +752,7 @@ def build_world(
             f"{stream_description(analyzed.fallback_audio)}"
         )
 
+        copy_artwork(item)
         generate(analyzed)
 
     write_file(world_root / "catalog.json", make_catalog(media))

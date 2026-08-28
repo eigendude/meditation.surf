@@ -10,7 +10,8 @@
 
 import json
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
+from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlparse
 
 import xbmc
@@ -18,10 +19,11 @@ import xbmcgui
 import xbmcplugin
 
 
-ADDON_ROOT = Path(__file__).resolve().parents[2]
-REPO_ROOT = ADDON_ROOT.parent.parent
+ADDON_ROOT: Path = Path(__file__).resolve().parents[2]
+REPO_ROOT: Path = ADDON_ROOT.parent.parent
 
-CATALOG_PATH = REPO_ROOT / "world" / "cinematic.earth" / "catalog.json"
+CATALOG_PATH: Path = REPO_ROOT / "world" / "cinematic.earth" / "catalog.json"
+ART_TYPES: tuple[str, ...] = ("thumb", "poster", "fanart")
 
 
 def resolve_media_uri(media: str, catalog_path: Path = CATALOG_PATH) -> str:
@@ -45,7 +47,59 @@ def resolve_media_uri(media: str, catalog_path: Path = CATALOG_PATH) -> str:
     return candidate.as_uri()
 
 
-def load_catalog():
+def resolve_artwork_uri(
+    artwork: str,
+    catalog_path: Path = CATALOG_PATH,
+) -> str:
+    """Resolve artwork only when it is local to the catalog directory."""
+    if not isinstance(artwork, str) or not artwork:
+        raise ValueError("Catalog artwork must be a non-empty string")
+
+    if (
+        urlparse(artwork).scheme
+        or Path(artwork).is_absolute()
+        or PureWindowsPath(artwork).is_absolute()
+    ):
+        raise ValueError("Catalog artwork must be a relative path")
+
+    return resolve_media_uri(artwork, catalog_path)
+
+
+def resolve_artwork(
+    item: dict[str, Any],
+    catalog_path: Path = CATALOG_PATH,
+) -> dict[str, str]:
+    artwork = item.get("art")
+    if artwork is None:
+        return {}
+    if not isinstance(artwork, dict):
+        xbmc.log(
+            f"plugin.cinematic.earth: Invalid artwork for "
+            f"'{item.get('id', '')}': art must be an object",
+            xbmc.LOGERROR,
+        )
+        return {}
+
+    resolved: dict[str, str] = {}
+    for art_type in ART_TYPES:
+        if art_type not in artwork:
+            continue
+        try:
+            resolved[art_type] = resolve_artwork_uri(
+                artwork[art_type],
+                catalog_path,
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            xbmc.log(
+                f"plugin.cinematic.earth: Invalid {art_type} artwork for "
+                f"'{item.get('id', '')}': {error}",
+                xbmc.LOGERROR,
+            )
+
+    return resolved
+
+
+def load_catalog() -> dict[str, Any]:
     """Load the locally generated cinematic.earth catalog."""
     with CATALOG_PATH.open("r", encoding="utf-8") as file:
         catalog = json.load(file)
@@ -60,7 +114,7 @@ def load_catalog():
     return catalog
 
 
-def get_catalog():
+def get_catalog() -> dict[str, Any] | None:
     try:
         return load_catalog()
     except (OSError, ValueError, json.JSONDecodeError) as error:
@@ -71,7 +125,7 @@ def get_catalog():
         return None
 
 
-def show_directory(plugin_url, plugin_handle):
+def show_directory(plugin_url: str, plugin_handle: int) -> None:
     """Populate the cinematic.earth directory."""
     catalog = get_catalog()
     if catalog is None:
@@ -92,6 +146,9 @@ def show_directory(plugin_url, plugin_handle):
             continue
 
         list_item = xbmcgui.ListItem(label=name)
+        artwork = resolve_artwork(item, CATALOG_PATH)
+        if artwork:
+            list_item.setArt(artwork)
         list_item.setProperty("IsPlayable", "true")
 
         play_url = f"{plugin_url}?{urlencode({
@@ -109,7 +166,7 @@ def show_directory(plugin_url, plugin_handle):
     xbmcplugin.endOfDirectory(plugin_handle)
 
 
-def play(plugin_handle, item_id):
+def play(plugin_handle: int, item_id: str) -> None:
     """Resolve a catalog item for playback through InputStream Adaptive."""
     catalog = get_catalog()
     if catalog is None:
@@ -162,6 +219,9 @@ def play(plugin_handle, item_id):
         offscreen=True,
     )
 
+    artwork = resolve_artwork(item, CATALOG_PATH)
+    if artwork:
+        play_item.setArt(artwork)
     play_item.setProperty("IsPlayable", "true")
     play_item.setProperty("inputstream", "inputstream.adaptive")
     play_item.setProperty(
@@ -179,7 +239,7 @@ def play(plugin_handle, item_id):
     )
 
 
-def main():
+def main() -> None:
     plugin_url = sys.argv[0]
     plugin_handle = int(sys.argv[1])
     params = dict(parse_qsl(sys.argv[2][1:]))
