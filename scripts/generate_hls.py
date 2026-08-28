@@ -148,6 +148,16 @@ def discover_media(
         key=lambda path: path.name,
     )
 
+    missing_sources = sorted(
+        set(media_ids).difference(source.name for source in sources)
+    )
+    if missing_sources:
+        raise ValueError(
+            "missing configured source"
+            f"{'s' if len(missing_sources) > 1 else ''}: "
+            + ", ".join(missing_sources)
+        )
+
     media = []
     source_by_id = {}
 

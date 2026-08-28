@@ -132,9 +132,13 @@ class ResolveMediaUriTests(unittest.TestCase):
             )
 
     def test_rejects_symlink_paths_that_escape_the_catalog_root(self):
-        outside = Path(self.temporary_directory.name).parent / "outside"
-        outside.mkdir(exist_ok=True)
-        (self.catalog_path.parent / "linked").symlink_to(outside, target_is_directory=True)
+        managed_root = Path(self.temporary_directory.name)
+        catalog_root = managed_root / "catalog"
+        catalog_root.mkdir()
+        self.catalog_path = catalog_root / "catalog.json"
+        outside = managed_root / "outside"
+        outside.mkdir()
+        (catalog_root / "linked").symlink_to(outside, target_is_directory=True)
 
         with self.assertRaisesRegex(ValueError, r"escape|containment"):
             self.plugin.resolve_media_uri("linked/master.m3u8", self.catalog_path)

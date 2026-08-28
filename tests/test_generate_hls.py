@@ -371,6 +371,51 @@ class FileTests(unittest.TestCase):
 
 
 class GenerationTests(unittest.TestCase):
+    def test_missing_configured_source_preserves_existing_world(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory)
+            content_root = repository / "content"
+            world_root = repository / "world"
+            content_root.mkdir()
+            stale = world_root / "stale"
+            stale.parent.mkdir()
+            stale.write_text("keep", encoding="utf-8")
+
+            source = content_root / "a.mp4"
+            source.touch()
+            source.with_suffix(".nfo").write_text(
+                "<movie><title>Alpha</title></movie>",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"missing configured source.*b\.mp4",
+            ):
+                generate_hls.build_world(
+                    content_root,
+                    world_root,
+                    {"a.mp4": "alpha", "b.mp4": "bravo"},
+                    probe=lambda _: {
+                        "streams": [
+                            {
+                                "index": 0,
+                                "codec_type": "video",
+                                "codec_name": "h264",
+                            },
+                            {
+                                "index": 1,
+                                "codec_type": "audio",
+                                "codec_name": "aac",
+                            },
+                        ],
+                        "format": {},
+                    },
+                    generate=lambda _: None,
+                )
+
+            self.assertTrue(stale.exists())
+
     def test_all_sources_are_probed_before_any_generation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             repository = Path(temporary_directory)
